@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.env
+# Local data: parents' conversations are sensitive. Never commit.
+data/
+*.sqlite
+*.sqlite-journal
+.DS_Store
+.idea/
+.vscode/
