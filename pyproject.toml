@@ -23,6 +23,7 @@ dependencies = [
     "rich==15.0.0",
     "sqlalchemy==2.1.6",
     "twilio==9.12.0",
+    "python-multipart==0.0.32",
 ]
 
 [project.optional-dependencies]

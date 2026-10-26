@@ -31,8 +31,20 @@ class Repository:
     def __init__(self, db_path: Path | str) -> None:
         if str(db_path) != ":memory:":
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        url = "sqlite://" if str(db_path) == ":memory:" else f"sqlite:///{db_path}"
-        self.engine = create_engine(url, future=True, connect_args={"check_same_thread": False})
+        if str(db_path) == ":memory:":
+            # One shared in-memory database across threads (tests, TestClient).
+            from sqlalchemy.pool import StaticPool
+
+            self.engine = create_engine(
+                "sqlite://",
+                future=True,
+                poolclass=StaticPool,
+                connect_args={"check_same_thread": False},
+            )
+        else:
+            self.engine = create_engine(
+                f"sqlite:///{db_path}", future=True, connect_args={"check_same_thread": False}
+            )
         Base.metadata.create_all(self.engine)
         self._sessions = sessionmaker(self.engine, expire_on_commit=False)
 
