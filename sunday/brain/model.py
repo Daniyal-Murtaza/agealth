@@ -96,7 +96,9 @@ def build_model(settings: Settings) -> ChatModel:
         return OpenAIChat(
             settings.require_openai(), settings.openai_model, timeout_s=settings.model_timeout_s
         )
-    return ScriptedChat(script=["(fake model)"])
+    from sunday.brain.offline import OfflineChat
+
+    return OfflineChat()
 
 
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)

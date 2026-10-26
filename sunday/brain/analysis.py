@@ -151,6 +151,8 @@ def analyse_call(
     for a in analysis.alerts:
         if a.kind in now_kinds:
             a.tier = "now"
+    if now_kinds and analysis.mood in ("ok", "bright"):
+        analysis.mood = "unclear"  # never "sounded okay" on a call where they fell
     analysis.alerts.sort(key=lambda a: {"now": 0, "today": 1, "info": 2}[a.tier])
     return analysis
 

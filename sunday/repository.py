@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from sunday.models import (
@@ -138,14 +138,17 @@ class Repository:
             return t
 
     def recent_calls(self, parent_id: str, *, days: int = 14, limit: int = 30) -> list[Call]:
+        """Calls in the window, answered or not. Unanswered calls have no started_at,
+        so they are placed by when they were scheduled."""
         since = datetime.now(UTC) - timedelta(days=days)
         with self.session() as s:
+            when = func.coalesce(Call.started_at, Call.scheduled_for)
             q = (
                 select(Call)
                 .where(Call.parent_id == parent_id)
-                .where(Call.started_at.is_not(None))
-                .where(Call.started_at >= since)
-                .order_by(Call.started_at.desc())
+                .where(when.is_not(None))
+                .where(when >= since)
+                .order_by(when.desc())
                 .limit(limit)
             )
             calls = list(s.scalars(q))

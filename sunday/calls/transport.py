@@ -68,7 +68,10 @@ class Simulator:
         return self.result
 
     def run_interactive(
-        self, ask: Callable[[str], str], show: Callable[[str], None]
+        self,
+        ask: Callable[[str], str],
+        show: Callable[[str], None],
+        note: Callable[[str], None] | None = None,
     ) -> SimulatedCall:
         ev = self.session.start()
         self.result.events.append(ev)
@@ -85,8 +88,8 @@ class Simulator:
             self.result.events.append(ev)
             if ev.say:
                 show(ev.say)
-            if ev.emergency:
-                show("[emergency mode: alerts sent, staying on the line]")
+            if ev.emergency and note is not None:
+                note("emergency mode: alerts sent to the family, staying on the line")
         return self.result
 
 
