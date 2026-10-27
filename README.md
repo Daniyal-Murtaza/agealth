@@ -457,19 +457,35 @@ Security notes for a real deployment: Twilio's webhooks are verified against you
 
 ## Part 8b: Put the demo on the internet for free
 
-For sharing a link (an application, a friend, an investor), the website can run on Render's free tier with no card. Free instances sleep after fifteen idle minutes and take about a minute to wake, and have no disk, so the demo family is re-seeded on each start. That is exactly right for a demo link and wrong for a real family, who need the always-on paid instance plus Twilio.
+For sharing a link (an application, a friend, an investor), the website can run for free on Vercel or Render. Neither needs a card. Both are right for a demo link and wrong for a real family: a real family needs an always-on server with Twilio, which is Part 8.
 
-Step 1. Open https://render.com/deploy?repo=https://github.com/Daniyal-Murtaza/agealth and sign in with GitHub (no payment details are asked for).
+### Option A: Vercel (recommended for the demo link)
 
-Step 2. Render reads `render.yaml` from the repo and shows one service, `sunday`, on the Free plan with its settings prefilled: a generated `SUNDAY_SECRET_KEY`, `SUNDAY_PROVIDER=fake`, the demo seeded and the demo sign-in switched on. Click **Apply** (or **Deploy Blueprint**).
+Vercel runs the website as a serverless function. Pages load fast and there is no sleeping, but a function cannot hold open the WebSocket a phone call needs, so phone calls do not work on Vercel; the simulator and everything on the website do. The database lives in the function's temporary storage and the demo family is re-seeded on every cold start.
 
-Step 3. Wait for the build (two or three minutes the first time). The dashboard shows a URL like `https://sunday-xxxx.onrender.com`. Open it.
+Step 1. Open this link and sign in with GitHub:
 
-Step 4. Test the hosted copy: the landing page; **See a family's page** signs you in as Daniyal to the demo household; every card works as in Part 5. **Start with your parent** also works, though sign-in links for new families print only in Render's logs until Twilio is configured.
+https://vercel.com/new/clone?repository-url=https://github.com/Daniyal-Murtaza/agealth&project-name=sunday&env=SUNDAY_SECRET_KEY&envDescription=Signs%20family%20sign-in%20links%20and%20sessions.%20Any%20long%20random%20string.&envLink=https://github.com/Daniyal-Murtaza/agealth%23part-1-install
 
-Step 5. To make the hosted conversations real, add `OPENAI_API_KEY` in the service's Environment tab and change `SUNDAY_PROVIDER` to `openai`. For real phones, add the Twilio variables and set `SUNDAY_PUBLIC_URL` to the Render URL, then point the Twilio number's webhook at it as in Part 8 Step 6.
+Step 2. It asks for one value, `SUNDAY_SECRET_KEY`. Paste any long random string (make one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`). Click **Deploy**.
 
-Every push to `main` redeploys automatically.
+Step 3. After about a minute you get `https://sunday-xxxx.vercel.app`. Open it: the landing page, **See a family's page** (signs you in as Daniyal to the demo household), **Start with your parent**, and every card from Part 5.
+
+Step 4. For real conversations in the simulator-backed pages, add `OPENAI_API_KEY` and `SUNDAY_PROVIDER=openai` under Settings > Environment Variables and redeploy. Every push to `main` redeploys automatically.
+
+The entrypoint is `api/index.py`; `vercel.json` routes every path to it.
+
+### Option B: Render (if you want phone calls on the free copy)
+
+Render runs the real server, so Twilio calls work there once you add the keys. Free instances sleep after fifteen idle minutes (about a minute to wake) and have no disk, so the demo family is re-seeded on each start.
+
+Step 1. Open https://render.com/deploy?repo=https://github.com/Daniyal-Murtaza/agealth and sign in with GitHub.
+
+Step 2. Render reads `render.yaml` and shows one service, `sunday`, on the Free plan with a generated secret, the offline brain, and the demo switched on. Click **Apply**.
+
+Step 3. Wait for the build (two or three minutes), open the URL it shows, and test as above.
+
+Step 4. For real phones, add the Twilio variables in the Environment tab and point the Twilio number's webhook at the Render URL as in Part 8 Step 6.
 
 ---
 

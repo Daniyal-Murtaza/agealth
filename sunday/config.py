@@ -36,8 +36,10 @@ class Settings(BaseSettings):
     # one-time link.
     seed_demo: bool = Field(default=False, alias="SUNDAY_SEED_DEMO")
     demo_login: bool = Field(default=False, alias="SUNDAY_DEMO_LOGIN")
-    # Set by Render automatically; used when SUNDAY_PUBLIC_URL is not given.
+    # Set by Render / Vercel automatically; used when SUNDAY_PUBLIC_URL is not given.
     render_external_url: str | None = Field(default=None, alias="RENDER_EXTERNAL_URL")
+    vercel_production_url: str | None = Field(default=None, alias="VERCEL_PROJECT_PRODUCTION_URL")
+    vercel_url: str | None = Field(default=None, alias="VERCEL_URL")
     login_link_minutes: int = Field(default=15, ge=1, le=120, alias="SUNDAY_LOGIN_LINK_MINUTES")
     session_days: int = Field(default=30, ge=1, le=365, alias="SUNDAY_SESSION_DAYS")
 
@@ -54,6 +56,9 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         if not self.public_url and self.render_external_url:
             self.public_url = self.render_external_url.rstrip("/")
+        host = self.vercel_production_url or self.vercel_url
+        if not self.public_url and host:
+            self.public_url = "https://" + host.replace("https://", "").rstrip("/")
 
     def require_secret_key(self) -> str:
         if self.secret_key is None or not self.secret_key.get_secret_value().strip():
