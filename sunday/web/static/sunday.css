@@ -74,7 +74,9 @@ code { font-family: var(--mono); font-size: .9em; background: var(--paper-2); pa
 .bar nav a { color: var(--ink-2); text-decoration: none; font-weight: 500; }
 .bar nav a:hover { color: var(--ink); }
 .bar nav a.btn { color: #fff; }
+.bar nav a { white-space: nowrap; }
 @media (max-width: 640px) { .bar nav { gap: .8rem; } .bar nav .hide-sm { display: none; } }
+@media (max-width: 480px) { .bar nav .hide-xs { display: none; } }
 
 /* -------------------------------------------------------------- buttons, forms */
 .btn {
@@ -123,6 +125,7 @@ label { display: block; font-size: .88rem; color: var(--ink-2); margin-bottom: .
 .card h2 .faint { max-width: 60%; text-align: right; line-height: 1.35; }
 .card h2 .faint, .card h2 a { font-family: var(--sans); font-size: .85rem; font-weight: 500; }
 .grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(12, 1fr); }
+.grid > *, .shell > *, .stack > *, .two > * { min-width: 0; } /* grid children must be allowed to shrink */
 .col-8 { grid-column: span 8; } .col-7 { grid-column: span 7; } .col-6 { grid-column: span 6; }
 .col-5 { grid-column: span 5; } .col-4 { grid-column: span 4; } .col-12 { grid-column: span 12; }
 @media (max-width: 860px) { .col-8, .col-7, .col-6, .col-5, .col-4 { grid-column: span 12; } }
@@ -150,6 +153,7 @@ label { display: block; font-size: .88rem; color: var(--ink-2); margin-bottom: .
 /* parent header */
 .hero-parent { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: .5rem 0 1.5rem; }
 .hero-parent h1 { font-size: clamp(2.4rem, 5vw, 3.4rem); margin-bottom: .2rem; }
+.hero-parent .right { margin-left: auto; }
 .hero-parent .status { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; color: var(--ink-2); }
 .switcher { display: inline-flex; gap: .25rem; background: var(--paper-2); border-radius: 999px; padding: .2rem; margin-bottom: .6rem; }
 .switcher a { text-decoration: none; color: var(--ink-2); padding: .25rem .8rem; border-radius: 999px; font-size: .9rem; }
@@ -183,8 +187,7 @@ label { display: block; font-size: .88rem; color: var(--ink-2); margin-bottom: .
 .legend i { display: inline-block; width: .8rem; height: .8rem; border-radius: 4px; vertical-align: -2px; margin-right: .35rem; }
 
 /* stats */
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1.25rem; }
-@media (max-width: 480px) { .stats { grid-template-columns: 1fr 1fr; } }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1.25rem; }
 .stat { background: #fff; border: 1px solid var(--line); border-radius: var(--r); padding: .9rem 1rem; }
 .stat b { display: block; font-family: var(--serif); font-size: 2.1rem; line-height: 1; font-weight: 500; }
 .stat b small { font-size: 1rem; color: var(--ink-3); }
@@ -269,6 +272,32 @@ mark.now { background: #fbe4e0; border-bottom-color: var(--now); }
 .cta .btn { background: #fff; color: var(--ink); border-color: #fff; box-shadow: none; }
 .cta .btn:hover { background: var(--paper); }
 footer { color: var(--ink-3); font-size: .86rem; padding: 2.5rem 0 3rem; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-top: 1px solid var(--line); margin-top: 3rem; }
+
+/* -------------------------------------------------------------- phones */
+@media (max-width: 640px) {
+  body { font-size: 15.5px; }
+  .wrap { padding: 0 .9rem; }
+  .card { padding: 1.1rem 1rem; border-radius: var(--r); }
+  .card h2 .faint { display: block; max-width: 100%; text-align: left; margin-top: .1rem; }
+  .hero-parent { margin-bottom: 1rem; }
+  .hero-parent .right { text-align: left; width: 100%; }
+  .hero-parent .right .btn { width: 100%; justify-content: center; }
+  .list .when { white-space: normal; text-align: right; }
+  .list li { gap: .6rem; }
+  .list li form .btn { padding: .35rem .6rem; font-size: .82rem; }
+  .turns .who { flex: 0 0 3.6rem; font-size: .66rem; }
+  .turns .text { max-width: 100%; }
+  .phone { max-width: 100%; }
+  .btn.lg { padding: .75rem 1.2rem; font-size: 1rem; }
+  .hero .btn { margin-bottom: .5rem; }
+  .cta { padding: 1.6rem; }
+  .strip { gap: 4px; } .strip a, .strip span { border-radius: 6px; }
+  .strip-labels { gap: 4px; font-size: .62rem; }
+  .legend { gap: .6rem .9rem; }
+  .toast { left: 1rem; right: 1rem; transform: none; border-radius: var(--r); justify-content: center; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  footer { flex-direction: column; }
+}
 
 .flash { background: #eef5ea; border: 1px solid #cfe3c8; border-radius: var(--r-sm); padding: .8rem 1rem; margin-bottom: 1rem; }
 .flash.warn { background: #fdf6e8; border-color: #f0dcb0; }
