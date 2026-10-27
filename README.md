@@ -37,10 +37,11 @@ and another hour for Part 8 (real phone calls).
 7. [Part 6: Self-serve onboarding, end to end](#part-6-self-serve-onboarding-end-to-end)
 8. [Part 7: Reminders, the weekly report and the scheduler](#part-7-reminders-the-weekly-report-and-the-scheduler)
 9. [Part 8: Real phone calls with Twilio](#part-8-real-phone-calls-with-twilio)
-10. [Part 9: The automated tests](#part-9-the-automated-tests)
-11. [Troubleshooting](#troubleshooting)
-12. [Starting over](#starting-over)
-13. [Design and project layout](#design-and-project-layout)
+10. [Part 8b: Put the demo on the internet for free](#part-8b-put-the-demo-on-the-internet-for-free)
+11. [Part 9: The automated tests](#part-9-the-automated-tests)
+12. [Troubleshooting](#troubleshooting)
+13. [Starting over](#starting-over)
+14. [Design and project layout](#design-and-project-layout)
 
 ---
 
@@ -454,12 +455,30 @@ Security notes for a real deployment: Twilio's webhooks are verified against you
 
 ---
 
+## Part 8b: Put the demo on the internet for free
+
+For sharing a link (an application, a friend, an investor), the website can run on Render's free tier with no card. Free instances sleep after fifteen idle minutes and take about a minute to wake, and have no disk, so the demo family is re-seeded on each start. That is exactly right for a demo link and wrong for a real family, who need the always-on paid instance plus Twilio.
+
+Step 1. Open https://render.com/deploy?repo=https://github.com/Daniyal-Murtaza/agealth and sign in with GitHub (no payment details are asked for).
+
+Step 2. Render reads `render.yaml` from the repo and shows one service, `sunday`, on the Free plan with its settings prefilled: a generated `SUNDAY_SECRET_KEY`, `SUNDAY_PROVIDER=fake`, the demo seeded and the demo sign-in switched on. Click **Apply** (or **Deploy Blueprint**).
+
+Step 3. Wait for the build (two or three minutes the first time). The dashboard shows a URL like `https://sunday-xxxx.onrender.com`. Open it.
+
+Step 4. Test the hosted copy: the landing page; **See a family's page** signs you in as Daniyal to the demo household; every card works as in Part 5. **Start with your parent** also works, though sign-in links for new families print only in Render's logs until Twilio is configured.
+
+Step 5. To make the hosted conversations real, add `OPENAI_API_KEY` in the service's Environment tab and change `SUNDAY_PROVIDER` to `openai`. For real phones, add the Twilio variables and set `SUNDAY_PUBLIC_URL` to the Render URL, then point the Twilio number's webhook at it as in Part 8 Step 6.
+
+Every push to `main` redeploys automatically.
+
+---
+
 ## Part 9: The automated tests
 
 Everything above is also covered by tests that need no keys and no network:
 
 ```bash
-pytest                                   # 88 offline tests, ~3s
+pytest                                   # 90 offline tests, ~3s
 ruff check . && ruff format --check .    # lint / format
 ```
 
