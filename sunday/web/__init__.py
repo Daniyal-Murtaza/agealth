@@ -111,6 +111,7 @@ def create_app(services: Services) -> FastAPI:
         tier_label=lambda t: TIER_LABEL.get(t, t),
         languages=LANGUAGE_NAMES,
         demo_login=settings.demo_login,
+        static_v=_static_version(),
     )
 
     def render(request: Request, name: str, **ctx) -> HTMLResponse:
@@ -685,6 +686,16 @@ def create_app(services: Services) -> FastAPI:
 
 
 # -- onboarding helpers ------------------------------------------------------------------------
+
+
+def _static_version() -> str:
+    """Short hash of the stylesheet, appended to its URL so a redeploy is never served with a
+    browser's cached copy of the old CSS."""
+    import hashlib
+
+    css = (_HERE / "static" / "sunday.css").read_bytes()
+    return hashlib.sha1(css).hexdigest()[:10]
+
 
 _COMMON_TZ = [
     "Asia/Karachi",
