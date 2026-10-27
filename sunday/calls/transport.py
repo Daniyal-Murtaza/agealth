@@ -144,6 +144,7 @@ def twilio_router(
     public_url: str,
     make_inbound_session: "Callable[[str, str], CallSession | None] | None" = None,
     on_end: "Callable[[CallSession], None] | None" = None,
+    verify=None,
 ):
     """Build the FastAPI router.
 
@@ -151,14 +152,18 @@ def twilio_router(
     ``make_inbound_session(from_number, call_sid)`` creates one when the parent rings us, or
     returns None if the number is unknown. ``on_end(session)`` runs when the relay closes, so
     the after-call pipeline does not depend on Twilio's status callback being configured.
+    ``verify`` is a dependency that rejects webhooks not signed by Twilio; every HTTP route
+    here runs it. The WebSocket cannot be signed the same way, so it only accepts a callSid
+    that one of the verified webhooks registered moments earlier.
     """
-    from fastapi import APIRouter, Form, WebSocket, WebSocketDisconnect
+    from fastapi import APIRouter, Depends, Form, WebSocket, WebSocketDisconnect
     from fastapi.responses import Response
 
+    deps = [Depends(verify)] if verify is not None else []
     router = APIRouter()
     ws_url = public_url.replace("https://", "wss://").replace("http://", "ws://") + "/twilio/relay"
 
-    @router.post("/twilio/voice/{parent_id}")
+    @router.post("/twilio/voice/{parent_id}", dependencies=deps)
     async def voice(parent_id: str, CallSid: str = Form("")) -> Response:  # noqa: N803
         # Twilio hits this when the parent answers. Greeting is spoken by Twilio while
         # the WebSocket connects, so the first second of the call is never silent.
@@ -170,7 +175,7 @@ def twilio_router(
         _PENDING[CallSid] = session
         return Response(content=twiml, media_type="application/xml")
 
-    @router.post("/twilio/inbound")
+    @router.post("/twilio/inbound", dependencies=deps)
     async def inbound(
         CallSid: str = Form(""),  # noqa: N803
         From: str = Form(""),  # noqa: N803
@@ -207,9 +212,11 @@ def twilio_router(
                     call_sid = msg.get("callSid", "")
                     session = _PENDING.pop(call_sid, None)
                     if session is None:
-                        pid = (msg.get("customParameters") or {}).get("parent_id", "")
-                        session = make_session(pid, call_sid)
-                        session.start()
+                        # Not registered by a verified webhook: refuse. Never create a
+                        # session from parameters the socket itself supplied.
+                        log.warning("relay setup for unknown callSid %r; closing", call_sid)
+                        await ws.send_text(end_message("unknown_call"))
+                        break
                     session.repo.update_call(session.call.id, provider_call_id=call_sid)
                     log.info("relay connected for call %s", call_sid)
                 elif kind == "prompt" and session is not None:

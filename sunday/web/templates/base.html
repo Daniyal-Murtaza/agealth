@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Sunday{% endblock %}</title>
+  <meta name="description" content="A warm daily phone call for an ageing parent, on the phone they already have. The family gets a short note afterwards; if something is wrong, an alert straight away.">
+  <link rel="stylesheet" href="/static/sunday.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23c4573a'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <a class="brand" href="/"><span class="dot"></span>Sunday</a>
+    <nav>
+      {% if viewer %}
+        <a href="/app">Family page</a>
+        <form class="inline-form" method="post" action="/logout"><button class="btn quiet" type="submit">Sign out</button></form>
+      {% else %}
+        <a href="/#how">How it works</a>
+        <a class="btn sm" href="/login">Family sign in</a>
+      {% endif %}
+    </nav>
+  </header>
+  {% block body %}{% endblock %}
+  <footer>
+    <span>Sunday is an assistant sent by the family, not a doctor and not a person. It never gives medical advice and never asks for money.</span>
+    <span>The family owns every word: export or delete at any time.</span>
+  </footer>
+</div>
+</body>
+</html>

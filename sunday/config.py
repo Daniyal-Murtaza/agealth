@@ -22,6 +22,16 @@ class Settings(BaseSettings):
     twilio_from_number: str | None = Field(default=None, alias="TWILIO_FROM_NUMBER")
     twilio_whatsapp_from: str | None = Field(default=None, alias="TWILIO_WHATSAPP_FROM")
     public_url: str | None = Field(default=None, alias="SUNDAY_PUBLIC_URL")
+    # Twilio signs every webhook with the auth token. Verification is on by default and
+    # fails closed (no token = every webhook rejected). Tests turn it off explicitly.
+    twilio_verify_signatures: bool = Field(default=True, alias="SUNDAY_TWILIO_VERIFY_SIGNATURES")
+
+    # Family web app. The secret signs login links and session cookies; without it the
+    # server refuses to start. Generate one with:
+    #   python -c "import secrets; print(secrets.token_urlsafe(32))"
+    secret_key: SecretStr | None = Field(default=None, alias="SUNDAY_SECRET_KEY")
+    login_link_minutes: int = Field(default=15, ge=1, le=120, alias="SUNDAY_LOGIN_LINK_MINUTES")
+    session_days: int = Field(default=30, ge=1, le=365, alias="SUNDAY_SESSION_DAYS")
 
     db_path: Path = Field(default=Path("./data/sunday.sqlite"), alias="SUNDAY_DB")
     log_level: str = Field(default="INFO", alias="SUNDAY_LOG_LEVEL")
@@ -32,6 +42,11 @@ class Settings(BaseSettings):
         if self.openai_api_key is None:
             raise MissingCredentialError("OPENAI_API_KEY")
         return self.openai_api_key.get_secret_value()
+
+    def require_secret_key(self) -> str:
+        if self.secret_key is None or not self.secret_key.get_secret_value().strip():
+            raise MissingCredentialError("SUNDAY_SECRET_KEY")
+        return self.secret_key.get_secret_value()
 
     def twilio_ready(self) -> bool:
         return bool(self.twilio_account_sid and self.twilio_auth_token and self.twilio_from_number)

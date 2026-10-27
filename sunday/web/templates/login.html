@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Family sign in - Sunday{% endblock %}
+{% block body %}
+<div class="narrow" style="margin: 3rem auto;">
+  <div class="card">
+    <h1 class="serif" style="font-size:2rem">Family sign in</h1>
+    <p class="muted">No password. We send a one-time link to the phone Sunday already sends your notes to.</p>
+    {% if request.query_params.get('expired') %}
+      <div class="flash warn">That link has expired or was already used. Ask for a new one.</div>
+    {% endif %}
+    <form method="post" action="/login">
+      <div class="field">
+        <label for="phone">Your mobile number</label>
+        <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+1 555 010 0001" required autofocus>
+      </div>
+      <button class="btn" type="submit">Send me a link</button>
+    </form>
+    <p class="small faint mt mb0">Only numbers a family has added to a parent's account can sign in. The link works once and for a short time.</p>
+  </div>
+</div>
+{% endblock %}

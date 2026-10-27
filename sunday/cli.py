@@ -364,21 +364,54 @@ def show(parent_id: str, db: Path | None = DbOpt) -> None:
 
 @app.command()
 def serve(
-    host: str = typer.Option("0.0.0.0", "--host"),
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        help="Loopback by default. Put a tunnel or reverse proxy in front; do not bind wider.",
+    ),
     port: int = typer.Option(8000, "--port"),
     db: Path | None = DbOpt,
 ) -> None:
-    """Run the web server (Twilio webhooks + family dashboard)."""
+    """Run the web server: the family page and Twilio webhooks."""
     import uvicorn
 
+    from sunday.config import MissingCredentialError
     from sunday.web import create_app
 
     svc = _services(db, need_model=True)
+    try:
+        svc.settings.require_secret_key()
+    except MissingCredentialError:
+        _fail(
+            "SUNDAY_SECRET_KEY is not set. It signs family sign-in links and sessions. Generate "
+            'one: python -c "import secrets; print(secrets.token_urlsafe(32))" and put it in .env'
+        )
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        console.print(
+            f"[yellow]warning:[/yellow] binding to {host} makes the server reachable from other "
+            "machines. Prefer 127.0.0.1 behind a tunnel or reverse proxy."
+        )
     console.print(
         f"Sunday listening on http://{host}:{port}  "
         f"(public: {svc.settings.public_url or 'not set'})"
     )
     uvicorn.run(create_app(svc), host=host, port=port, log_level="info")
+
+
+@app.command()
+def demo(db: Path | None = DbOpt) -> None:
+    """Seed a demo parent with two weeks of history, so the family page has something to show."""
+    from sunday.demo import FAMILY, seed_demo
+
+    svc = _services(db)
+    pid = seed_demo(svc.repo)
+    console.print(f"Demo parent ready: {pid} (Amma).")
+    console.print("Sign in to the family page with one of these numbers:")
+    for name, relation, phone, _tier, _primary in FAMILY:
+        console.print(f"  {phone}   {name}, {relation}")
+    console.print(
+        "With the console messenger, the sign-in link prints in the `sunday serve` terminal."
+    )
 
 
 def main() -> None:

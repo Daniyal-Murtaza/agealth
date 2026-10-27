@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ parent.address() }}, {{ local(call.started_at).strftime('%A %d %b') }} - Sunday{% endblock %}
+{% block body %}
+<p class="small"><a href="/app?parent={{ parent.id }}">&larr; {{ parent.address() }}'s page</a></p>
+<div class="hero-parent" style="margin-top:0">
+  <div>
+    <h1 style="font-size:2.2rem">{% if call.direction == 'inbound' %}{{ parent.address() }} called Sunday{% else %}Sunday called {{ parent.address() }}{% endif %}</h1>
+    <p class="muted mb0"><span class="mood {{ call.mood or 'unclear' }}"></span>{{ local(call.started_at).strftime('%A %d %B, %H:%M') }}{% if call.ended_at and call.started_at %} · {{ ((call.ended_at - call.started_at).total_seconds() // 60)|int }} min{% endif %}{% if call.mood %} · {{ mood_label(call.mood) }}{% endif %}</p>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="col-8 stack">
+    <div class="card">
+      <h2>The note</h2>
+      <p class="mb0" style="font-size:1.08rem">{{ call.summary or 'No note was written for this call.' }}</p>
+    </div>
+    <div class="card">
+      <h2>What was said <span class="faint">{{ call.turns|length }} turns</span></h2>
+      <ul class="turns">
+        {% for t in call.turns %}
+        <li class="{{ t.speaker }}"><span class="who">{{ 'Sunday' if t.speaker == 'sunday' else parent.address() }}</span><span class="text">{{ t.text }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  <div class="col-4 stack">
+    <div class="card">
+      <h2>What Sunday noticed</h2>
+      {% if call.observations %}
+      <ul class="list small">
+        {% for o in call.observations %}
+        <li><div><span class="pill">{{ o.kind }}</span>{{ o.text }}{% if o.value %} <span class="faint">({{ o.value }})</span>{% endif %}
+          {% if o.evidence %}<div class="tiny faint">"{{ o.evidence }}"</div>{% endif %}
+          {% if o.follow_up %}<div class="tiny" style="color:var(--accent-ink)">will ask tomorrow</div>{% endif %}</div></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted mb0">Nothing specific.</p>{% endif %}
+    </div>
+    {% if call.alerts %}
+    <div class="card">
+      <h2>Alerts from this call</h2>
+      {% for a in call.alerts %}<div class="alert {{ a.tier }}"><div><div class="tag">{{ tier_label(a.tier) }}</div>{{ a.text }}</div></div>{% endfor %}
+    </div>
+    {% endif %}
+    <p class="small faint">Every line above is what was actually said. Observations quote {{ parent.address() }}'s own words; anything the assistant could not point to was dropped.</p>
+  </div>
+</div>
+{% endblock %}

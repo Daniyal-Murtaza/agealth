@@ -191,15 +191,15 @@ def test_web_dashboard_and_status_callbacks(env, tmp_path):
         SUNDAY_PROVIDER="fake",
         SUNDAY_DB=Path(env["SUNDAY_DB"]),
         SUNDAY_PUBLIC_URL="https://x.test",
+        SUNDAY_SECRET_KEY="test-secret-not-for-production",
+        SUNDAY_TWILIO_VERIFY_SIGNATURES=False,
     )
     messenger = ConsoleMessenger(echo=False)
     svc = Services.from_settings(settings, messenger=messenger)
     client = TestClient(create_app(svc))
 
-    assert client.get("/health").json() == {"ok": True, "parents": 1}
-    page = client.get("/").text
-    assert "Fatima Zaidi" in page and f"/parents/{pid}" in page
-    assert "No calls yet" in client.get(f"/parents/{pid}").text
+    assert client.get("/health").json() == {"ok": True}
+    assert "Family sign in" in client.get("/").text  # public landing page, no parent data
 
     # A call that was answered: voice webhook -> relay -> status callback runs the pipeline.
     r = client.post(f"/twilio/voice/{pid}", data={"CallSid": "CA1"})
@@ -216,7 +216,7 @@ def test_web_dashboard_and_status_callbacks(env, tmp_path):
     r = client.post("/twilio/status/x", data={"CallSid": "CA1", "CallStatus": "completed"})
     assert r.status_code == 200
     assert any("Sunday called Amma" in t for _, t in messenger.sent)
-    assert "completed" in client.get(f"/parents/{pid}").text
+    assert svc.repo.recent_calls(pid, days=1)[0].status == "completed"
 
     # Two unanswered calls -> a 'today' alert goes to Daniyal.
     from sunday.calls.dialer import dial
@@ -226,7 +226,7 @@ def test_web_dashboard_and_status_callbacks(env, tmp_path):
     c2 = dial(svc.repo, svc.telephony, settings, svc.repo.get_parent(pid))
     client.post(f"/twilio/status/{c2}", data={"CallSid": "CA3", "CallStatus": "no-answer"})
     assert any("did not answer today or yesterday" in t for _, t in messenger.sent)
-    assert "no_answer" in client.get(f"/parents/{pid}").text
+    assert svc.repo.recent_calls(pid, days=1)[0].status == "no_answer"
 
 
 def test_commands_fail_cleanly_without_parent(env):
@@ -247,6 +247,8 @@ def test_parent_can_call_in(env):
         SUNDAY_PROVIDER="fake",
         SUNDAY_DB=Path(env["SUNDAY_DB"]),
         SUNDAY_PUBLIC_URL="https://x.test",
+        SUNDAY_SECRET_KEY="test-secret-not-for-production",
+        SUNDAY_TWILIO_VERIFY_SIGNATURES=False,
     )
     messenger = ConsoleMessenger(echo=False)
     svc = Services.from_settings(settings, messenger=messenger)
@@ -301,3 +303,241 @@ def test_message_can_be_held_until_a_date(env):
     assert r.exit_code == 1 and "YYYY-MM-DD" in r.output
     r = run(env, ["show", pid])
     assert "Dr Khan" in r.output and "(from Wed 02 Jan)" in r.output
+
+
+# --------------------------------------------------------------- the family web app
+
+
+def _web(env, **overrides):
+    kw = {
+        "SUNDAY_PROVIDER": "fake",
+        "SUNDAY_DB": Path(env["SUNDAY_DB"]),
+        "SUNDAY_PUBLIC_URL": "https://x.test",
+        "SUNDAY_SECRET_KEY": "test-secret-not-for-production",
+        "SUNDAY_TWILIO_VERIFY_SIGNATURES": False,
+    }
+    kw.update(overrides)
+    settings = Settings(_env_file=None, **kw)
+    messenger = ConsoleMessenger(echo=False)
+    svc = Services.from_settings(settings, messenger=messenger)
+    # https base url: the session cookie is Secure, so the client must look like https.
+    client = TestClient(create_app(svc), base_url="https://testserver", follow_redirects=False)
+    return svc, messenger, client
+
+
+def _sign_in(client, messenger, phone):
+    r = client.post("/login", data={"phone": phone})
+    assert r.status_code == 200 and "Check your phone" in r.text
+    link = re.search(r"https://x\.test(/auth/\S+)", messenger.sent[-1][1]).group(1)
+    r = client.get(link)
+    assert r.status_code == 303 and r.headers["location"] == "/app"
+    assert "sunday_session=" in r.headers["set-cookie"]
+    assert "HttpOnly" in r.headers["set-cookie"] and "Secure" in r.headers["set-cookie"]
+    return link
+
+
+def test_server_refuses_to_start_without_a_secret(env):
+    settings = Settings(_env_file=None, SUNDAY_PROVIDER="fake", SUNDAY_DB=Path(env["SUNDAY_DB"]))
+    svc = Services.from_settings(settings, messenger=ConsoleMessenger(echo=False))
+    with pytest.raises(Exception, match="SUNDAY_SECRET_KEY"):
+        create_app(svc)
+    r = run(env, ["serve", "--port", "1"])
+    assert r.exit_code == 1 and "SUNDAY_SECRET_KEY" in r.output
+
+
+def test_landing_is_public_and_the_family_page_is_not(env):
+    _setup(env)
+    _, _, client = _web(env)
+    r = client.get("/")
+    assert r.status_code == 200 and "Someone calls Amma every morning" in r.text
+    assert "Family sign in" in r.text
+    assert client.get("/health").json() == {"ok": True}
+    for path in ("/app", "/app/par_x/export.json", "/app/par_x/calls/call_x"):
+        r = client.get(path)
+        assert r.status_code == 303 and r.headers["location"] == "/login", path
+    assert client.get("/docs").status_code == 404
+
+
+def test_magic_link_login_is_scoped_single_use_and_quiet_about_unknown_numbers(env):
+    _setup(env)
+    svc, messenger, client = _web(env)
+
+    # Unknown number: same page, nothing sent.
+    r = client.post("/login", data={"phone": "+1 555 999 9999"})
+    assert r.status_code == 200 and "Check your phone" in r.text and messenger.sent == []
+
+    # Daniyal (info tier, console channel) gets a link on his channel.
+    link = _sign_in(client, messenger, "+1 555 0001")
+    assert messenger.sent[-1][0] == "Daniyal" and "once only" in messenger.sent[-1][1]
+    # The link is single use.
+    r = client.get(link)
+    assert r.status_code == 303 and "expired=1" in r.headers["location"]
+    # A forged token is refused.
+    assert "expired=1" in client.get("/auth/not-a-real-token").headers["location"]
+
+    page = client.get("/app")
+    assert page.status_code == 200
+    assert "Amma" in page.text and "Signed in as Daniyal" in page.text
+    assert "For the next call" in page.text and "call Thursday after work" in page.text
+    assert "Export everything" in page.text
+
+    # Another family's parent is not visible, even by id.
+    other = svc.repo.add_parent(name="Someone Else", phone="+1 555 777 0000")
+    svc.repo.add_family_member(other.id, name="Stranger", phone="+1 555 777 1111")
+    assert client.get(f"/app?parent={other.id}").status_code == 404
+    assert client.get(f"/app/{other.id}/export.json").status_code == 404
+    r = client.post(f"/app/{other.id}/messages", data={"text": "hack", "kind": "say"})
+    assert r.status_code == 404
+    assert svc.repo.undelivered_messages(other.id) == []
+
+    # Sign out clears the cookie.
+    r = client.post("/logout")
+    assert r.status_code == 303
+    client.cookies.clear()
+    assert client.get("/app").status_code == 303
+
+
+def test_family_actions_and_call_page(env):
+    pid = _setup(env)
+    svc, messenger, client = _web(env)
+    _sign_in(client, messenger, "+1 555 0001")
+
+    # Queue an ask for tomorrow, with a date; then remove it.
+    r = client.post(
+        f"/app/{pid}/messages",
+        data={"text": "Does she want us on Sunday?", "kind": "ask", "on": "2030-01-05"},
+    )
+    assert r.status_code == 303
+    q = svc.repo.undelivered_messages(pid, include_future=True)
+    mine = [m for m in q if m.from_name == "Daniyal"]
+    assert len(mine) == 1 and mine[0].kind == "ask" and str(mine[0].remind_on) == "2030-01-05"
+    client.post(f"/app/{pid}/messages/{mine[0].id}/remove")
+    assert [m.from_name for m in svc.repo.undelivered_messages(pid, include_future=True)] == [
+        "Hira"
+    ]
+
+    # Tell Sunday something, then forget it.
+    client.post(
+        f"/app/{pid}/memories", data={"text": "Her sister calls on Fridays.", "topic": "family"}
+    )
+    mems = svc.repo.memories_for(pid)
+    assert any("sister" in m.text for m in mems)
+    sister = next(m for m in mems if "sister" in m.text)
+    client.post(f"/app/{pid}/memories/{sister.id}/remove")
+    assert not any("sister" in m.text for m in svc.repo.memories_for(pid))
+
+    # Settings: valid values stick, junk is ignored.
+    client.post(
+        f"/app/{pid}/settings",
+        data={
+            "call_time": "08:30",
+            "timezone": "Europe/London",
+            "language": "ur",
+            "preferred_name": "Ammi",
+        },
+    )
+    p = svc.repo.get_parent(pid)
+    assert (p.call_time, p.timezone, p.language, p.preferred_name) == (
+        "08:30",
+        "Europe/London",
+        "ur",
+        "Ammi",
+    )
+    client.post(
+        f"/app/{pid}/settings",
+        data={"call_time": "25:99", "timezone": "Mars/Base", "language": "xx"},
+    )
+    p = svc.repo.get_parent(pid)
+    assert (p.call_time, p.timezone, p.language) == ("08:30", "Europe/London", "ur")
+
+    # A member may change only their own alert level.
+    me = next(m for m in svc.repo.family_for(pid) if m.name == "Daniyal")
+    hira = next(m for m in svc.repo.family_for(pid) if m.name == "Hira")
+    assert (
+        client.post(
+            f"/app/{pid}/members/{me.id}", data={"min_alert_tier": "today", "channel": "sms"}
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(f"/app/{pid}/members/{hira.id}", data={"min_alert_tier": "info"}).status_code
+        == 403
+    )
+    assert svc.repo.get_family_member(me.id).min_alert_tier == "today"
+    assert svc.repo.get_family_member(hira.id).min_alert_tier == "now"
+
+    # Have a call (with a fall) through the simulator, then read it on the web.
+    run(env, ["simulate", pid], input="I fell in the bathroom\nmy hip\n/hangup\n")
+    page = client.get(f"/app?parent={pid}")
+    assert "Urgent" in page.text and "I've seen this" in page.text
+    alert = [a for a in svc.repo.alerts_since(pid, days=1) if a.tier == "now"][0]
+    client.post(f"/app/{pid}/alerts/{alert.id}/ack")
+    assert svc.repo.get_alert(alert.id).acknowledged_by == "Daniyal"
+    assert "I've seen this" not in client.get(f"/app?parent={pid}").text
+
+    call = svc.repo.recent_calls(pid, days=1)[0]
+    page = client.get(f"/app/{pid}/calls/{call.id}")
+    assert page.status_code == 200 and "I fell in the bathroom" in page.text
+    # Settings above switched Ammi to Urdu, so the emergency script is in Urdu.
+    assert "میں آپ کے ساتھ ہوں" in page.text and "What Sunday noticed" in page.text
+
+    data = client.get(f"/app/{pid}/export.json").json()
+    assert data["parent"]["preferred_name"] == "Ammi" and len(data["calls"]) == 1
+    assert data["calls"][0]["transcript"][1]["text"] == "I fell in the bathroom"
+    assert data["alerts"][0]["tier"] == "now"
+
+
+def test_demo_seeds_a_fortnight_and_the_page_renders_it(env):
+    r = run(env, ["demo"])
+    assert r.exit_code == 0 and "Demo parent ready" in r.output
+    assert run(env, ["demo"]).exit_code == 0  # idempotent
+    svc, messenger, client = _web(env)
+    _sign_in(client, messenger, "+1 555 010 0001")
+    page = client.get("/app").text
+    assert "Amma" in page and "days answered" in page and "Dr Khan" in page
+    assert "Alerts already seen" in page and "called in" not in page
+    assert page.count('class="answered') == 13 and 'class="missed' in page
+
+
+def test_twilio_webhooks_require_a_valid_signature(env):
+    pid = _setup(env)
+    svc, _, client = _web(
+        env,
+        SUNDAY_TWILIO_VERIFY_SIGNATURES=True,
+        TWILIO_ACCOUNT_SID="ACtest",
+        TWILIO_AUTH_TOKEN="shhh-test-token",
+        TWILIO_FROM_NUMBER="+15550000000",
+    )
+    # No signature: rejected. Wrong signature: rejected. Correct signature: accepted.
+    r = client.post(f"/twilio/voice/{pid}", data={"CallSid": "CA1"})
+    assert r.status_code == 403
+    r = client.post(
+        f"/twilio/voice/{pid}", data={"CallSid": "CA1"}, headers={"X-Twilio-Signature": "nope"}
+    )
+    assert r.status_code == 403
+    from twilio.request_validator import RequestValidator
+
+    sig = RequestValidator("shhh-test-token").compute_signature(
+        f"https://x.test/twilio/voice/{pid}", {"CallSid": "CA1"}
+    )
+    r = client.post(
+        f"/twilio/voice/{pid}", data={"CallSid": "CA1"}, headers={"X-Twilio-Signature": sig}
+    )
+    assert r.status_code == 200 and "ConversationRelay" in r.text
+    # Inbound and status are gated the same way.
+    assert client.post("/twilio/inbound", data={"CallSid": "CA2", "From": "+1"}).status_code == 403
+    assert client.post("/twilio/status/x", data={"CallSid": "CA2"}).status_code == 403
+    # The relay refuses a callSid no verified webhook registered.
+    with client.websocket_connect("/twilio/relay") as ws:
+        ws.send_text(
+            json.dumps(
+                {"type": "setup", "callSid": "CA-unknown", "customParameters": {"parent_id": pid}}
+            )
+        )
+        assert json.loads(ws.receive_text())["type"] == "end"
+
+
+def test_twilio_verification_fails_closed_without_a_token(env):
+    pid = _setup(env)
+    _, _, client = _web(env, SUNDAY_TWILIO_VERIFY_SIGNATURES=True)  # on, but no token configured
+    assert client.post(f"/twilio/voice/{pid}", data={"CallSid": "CA1"}).status_code == 403

@@ -11,7 +11,10 @@ and SQLite for everything that must not be lost.
 - **Nothing invented.** Every observation, alert and memory must quote the parent's words; quotes not found in the transcript are dropped. Household chores become follow-ups, never alerts. No medical advice, ever.
 - **They can call it too.** Save the number as "Sunday". A call from the parent's own phone is answered by name, skips the morning survey, passes on anything waiting and just talks; the family gets the same short note.
 - **Reminders on the right day.** "Your appointment is Tuesday at 10 with Dr Khan" is queued once and said on the day you choose, not tonight.
+- **A quiet page for the family.** Sign in with the phone Sunday already messages (no password: a one-time link). Today's note, the last two weeks at a glance, alerts to acknowledge, what to ask tomorrow, what Sunday knows, who hears what, and a one-click export of everything.
 - **Runs with no accounts.** An offline brain, a console messenger and a terminal simulator let you design the conversation before paying for anything.
+
+![The family page](docs/family-page.png)
 - **Degrades politely.** If the model is down the call ends with a kind line and the transcript is kept. Two missed calls raise a note; three raise an alert.
 
 ## Setup
@@ -40,6 +43,8 @@ TWILIO_FROM_NUMBER=+1...        # your Twilio voice number
 TWILIO_WHATSAPP_FROM=whatsapp:+14155238886   # sandbox or approved sender
 SUNDAY_PUBLIC_URL=https://your-tunnel.example.com
 
+SUNDAY_SECRET_KEY=              # signs family sign-in links and sessions; required for `sunday serve`
+                                # python -c "import secrets; print(secrets.token_urlsafe(32))"
 SUNDAY_DB=./data/sunday.sqlite  # optional
 SUNDAY_MAX_CALL_MINUTES=12      # optional
 ```
@@ -85,11 +90,26 @@ Things to try in the simulator:
 Family members with `--alerts now` only hear about emergencies; `today` adds
 things worth checking on today; `info` gets every note and the weekly digest.
 
+## The family page
+
+```bash
+sunday demo       # seeds Amma with two weeks of history so the page has something to show
+sunday serve      # http://127.0.0.1:8000 - loopback only; put a tunnel in front for real use
+```
+
+Open http://127.0.0.1:8000, click Family sign in, and enter `+1 555 010 0001`
+(Daniyal, from the demo). With the console messenger the one-time link prints
+in the `sunday serve` terminal; with Twilio configured it arrives on WhatsApp
+or SMS, the same way the daily notes do. The page is scoped to the parents
+whose family record carries that number, and nothing else.
+
+![Landing page](docs/landing.png)
+
 ## Real calls (Twilio)
 
 1. Buy a voice number in the Twilio console and fill in the `TWILIO_*` values in `.env`. For WhatsApp notes also set `TWILIO_WHATSAPP_FROM` (the sandbox works) and give family members `--channel whatsapp`; `--channel sms` also works.
 2. Expose the server: `ngrok http 8000` (or `cloudflared`) and set `SUNDAY_PUBLIC_URL` to the tunnel address.
-3. `sunday serve` in one terminal. It hosts the Twilio webhooks and a small read-only dashboard at `/`.
+3. `sunday serve` in one terminal. It binds to 127.0.0.1 and hosts the family page and the Twilio webhooks; the tunnel is the public face. Twilio's webhooks are verified against your auth token and rejected otherwise.
 4. In another: `sunday call par_XXXX`. The parent's phone rings; the family note arrives when the call ends.
 5. So the parent can call in: in the Twilio console set the number's voice webhook to `https://<your-tunnel>/twilio/inbound` (POST). Sunday matches the caller id to a parent; unknown numbers hear a kind refusal. Save the number in the parent's phone as "Sunday".
 6. For daily calls run `sunday due` every five minutes from cron. It calls whoever's local call time it is, once per day, records no-answers, and on Sunday evening (local time) sends each family their weekly report.
@@ -124,12 +144,17 @@ Sunday is staying on the line with them. Please call them or go now.
 ## Verify offline
 
 ```bash
-pytest                                   # 75 offline tests, ~1s
+pytest                                   # 82 offline tests, ~2s
 ruff check . && ruff format --check .    # lint / format
 ```
 
 The tests use a scripted model and an in-memory database, so they need no
-keys. They cover: a normal call through the plan to a warm close; a parent
+keys. They cover: the family page (magic-link sign-in that is single-use and
+quiet about unknown numbers, a Secure HttpOnly session, scoping so another
+family's parent is invisible even by id, every action, the call page and the
+export); Twilio webhooks rejected without a valid signature and the relay
+refusing an unregistered call; the server refusing to start without a secret;
+a normal call through the plan to a warm close; a parent
 calling in and getting a conversation instead of a survey, with the pipeline
 running when the line closes; reminders held until their day; the weekly
 report due once on Sunday evening; an old database gaining new columns; a fall that
@@ -154,7 +179,14 @@ the code enforces, what the live runs changed, failure handling and tradeoffs.
 
 ```
 sunday/
-  cli.py            parent / family / med / memory / message / simulate / call / due / serve
+  cli.py            parent / family / med / memory / message / simulate / call / due / serve / demo
+  demo.py           two weeks of believable history for the family page
+  web/
+    __init__.py     routes: landing, sign-in, the family page and its actions, export, Twilio
+    auth.py         one-time links over WhatsApp/SMS, signed session cookie, rate limits
+    twilio_auth.py  X-Twilio-Signature verification, fail-closed
+    templates/      base, landing, login, family, call
+    static/         one stylesheet, no framework, no web fonts
   scheduler.py      who is due a call now; whose weekly report is due
   config.py         settings (.env)
   models.py         Parent, FamilyMember, Call, Turn, Observation, Alert, QueuedMessage, Memory
@@ -173,6 +205,5 @@ sunday/
     pipeline.py     after-call: alerts first, then analysis, storage, family notes
     messenger.py    WhatsApp / SMS via Twilio, or the console
     digest.py       weekly trends in plain language
-  web.py            Twilio webhooks + family dashboard
 tests/              offline unit and end-to-end tests
 ```

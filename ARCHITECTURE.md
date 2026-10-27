@@ -44,7 +44,8 @@ cron ──► sunday due ──► dialer (Twilio) ──► parent's phone ◄
 | `notify/pipeline.py` | `notify_urgent`, called from inside a live call to send `now` alerts at once; and `finish_call`, the one function transports call when a call ends. Idempotent. Any unsent emergencies first, then analysis, storage, and a short note to each family member whose alert level wants it. |
 | `notify/messenger.py` | WhatsApp or SMS via Twilio, or the console. One member's failure never blocks the others. |
 | `notify/digest.py` | Trends over stored alerts and observations: the week's alerts first, then calls, medication, mood, sleep, "worth a look" flags, open follow-ups. Pure code, never a diagnosis. `send_digest` delivers it to members on `info` and stamps the parent so the cron tick sends it once. |
-| `web.py`, `cli.py` | Twilio webhooks (`/twilio/voice`, `/twilio/relay`, `/twilio/status`), a read-only dashboard, `/health`; the operator CLI. |
+| `web/` | The public landing page; family sign-in by one-time link sent over the member's own channel (`auth.py`, signed with `itsdangerous`, single-use, rate limited, Secure HttpOnly session cookie); the family page and its actions, every one re-checking that the signed-in phone is on the parent's family record; the call page; a JSON export of everything; Twilio webhooks (`/twilio/voice`, `/twilio/inbound`, `/twilio/status`) behind `X-Twilio-Signature` verification (`twilio_auth.py`, fails closed) and the relay WebSocket, which only accepts a callSid a verified webhook registered. Server-rendered Jinja templates and one stylesheet; no JavaScript framework. |
+| `cli.py`, `demo.py` | The operator CLI, including `serve` (loopback by default, refuses to start without `SUNDAY_SECRET_KEY`) and `demo`, which seeds a believable fortnight. |
 
 ## Three rules, enforced in code
 
@@ -66,6 +67,16 @@ cron ──► sunday due ──► dialer (Twilio) ──► parent's phone ◄
 The model sees a small, fixed-shape prompt every turn: who the parent is, how to speak, the hard rules, memories, yesterday's follow-ups, pending family messages with ids and kind (`Tell them` / `ASK them and wait for their answer` / `Remind them`), the plan, what is covered, and the last 24 transcript turns. Family messages are placed early with an explicit instruction to deliver them right after asking how they are; when an `ask` is pending a one-line nudge is appended so it gets asked plainly.
 
 The analysis prompt is given the whole transcript and the delivered-message ids and must return typed JSON. Alert tiers are defined in the prompt in terms of the person's wellbeing, with household matters explicitly excluded; code then re-checks every alert's kind and text and demotes household ones anyway.
+
+## Who can see what
+
+Three audiences, three mechanisms.
+
+- **Anyone** sees the landing page and the sign-in form. Nothing about any parent is on them.
+- **Family members** sign in with the phone number on their family record. We send a one-time link over the channel their notes already arrive on (WhatsApp, SMS, console in development), signed with the server secret, valid for fifteen minutes and once. The session is a signed, HttpOnly, SameSite cookie (Secure when the public URL is https). Authorization is membership: `Viewer.parents` is exactly the parents whose family record carries that phone, and every `/app` route resolves the parent through it, so another family's parent is a 404 even by id. A member can change only their own alert level. The form never reveals whether a number is known and is rate limited per number and per address.
+- **Twilio** signs each webhook with the account auth token; `make_twilio_verifier` recomputes the signature over the public URL and form fields and rejects mismatches. With verification on and no token configured, every webhook is rejected. The Conversation Relay WebSocket cannot carry that signature, so it only accepts a `callSid` that a verified webhook registered moments before, and never builds a session from parameters the socket supplies.
+
+The server binds to 127.0.0.1. A tunnel or reverse proxy is the public face; `serve` warns if asked to bind wider.
 
 ## Persistence
 
@@ -111,6 +122,6 @@ A second end-to-end pass through three simulated calls (an ordinary day, a fall,
 
 ## Where this sits on the roadmap
 
-Phase 0 is complete: the daily call in the parent's language, memory across calls, medication and dated reminder questions, the WhatsApp or SMS note after each call, missed-call and keyword alerts, and the parent able to call in. From Phase 1, the question queue, alert tiers and roles per family member, and the Sunday-evening weekly report are also done.
+Phase 0 is complete: the daily call in the parent's language, memory across calls, medication and dated reminder questions, the WhatsApp or SMS note after each call, missed-call and keyword alerts, and the parent able to call in. From Phase 1: the question queue, alert tiers and roles per family member, the Sunday-evening weekly report, and the family page (today's note, the fortnight strip, alerts with acknowledgement, the queue, memories, settings, who-hears-what, export) are done.
 
-Not yet: recordings with consent and the "listen to the call" link, a voice per parent, the trends dashboard with charts (the dashboard shows text), the care-coordination list of appointments and doctors the call can read from, billing, story prompts and the archive, the model-based safety classifier, the B2B API. None change the shape above.
+Not yet: recordings with consent and the "listen to the call" link, a voice per parent, charts beyond the fortnight strip, the care-coordination list of appointments and doctors the call can read from, self-serve onboarding and billing, story prompts and the archive, the model-based safety classifier, the B2B API. None change the shape above.

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Sunday - a daily call for your parent{% endblock %}
+{% block body %}
+<section class="hero">
+  <div>
+    <h1>Someone calls Amma every morning.<br>You hear how it went.</h1>
+    <p class="lede">Sunday is a warm daily phone call for an ageing parent, on the phone they already have. Afterwards the family gets a two-line note on WhatsApp. If something is wrong, an alert straight away. The parent never touches technology.</p>
+    <p><a class="btn" href="/login">Family sign in</a> &nbsp; <a class="btn ghost" href="#how">How it works</a></p>
+    <p class="small faint">English, Urdu, Hindi and Punjabi. Introduces itself as the assistant sent by the family, every time.</p>
+  </div>
+  <div class="phone" aria-label="Example of the note a family receives">
+    <div class="meta">WhatsApp · 9:07</div>
+    <div class="bubble">Sunday called Amma - Tue 27 Oct, 09:04 - sounded okay
+
+Slept a little late but took her tablet with chai. Paratha for breakfast. Still waiting on the plumber, third day.
+
+Tomorrow I'll ask about: whether the plumber came
+
+Replies to your messages:
+- Yes to the lift on Tuesday, after eleven.</div>
+    <div class="meta">A week earlier · 9:02</div>
+    <div class="bubble urgent">URGENT - Sunday about Amma
+Amma said they fell. Please check on them immediately.
+They said: "I fell in the kitchen and I can't get up"
+Sunday is staying on the line with them. Please call them or go now.</div>
+  </div>
+</section>
+
+<section class="three">
+  <div class="card">
+    <h3>For the parent: a phone that rings</h3>
+    <p class="mb0 muted">At the time they chose, in their language, in the same warm voice. Sleep, meals, medication, then whatever they want to talk about. It remembers yesterday: "did the plumber come?" They can ring it too, any time, on a number saved as "Sunday".</p>
+  </div>
+  <div class="card">
+    <h3>For the family: a quiet page</h3>
+    <p class="mb0 muted">A short note after each call, alerts when it matters, and a place to leave what you'd like asked tomorrow. "Remind Baba about the clinic." "Ask if she wants us on Sunday." Siblings stop coordinating by group chat.</p>
+  </div>
+  <div class="card">
+    <h3>Safe by code, not by prompt</h3>
+    <p class="mb0 muted">"I fell", "chest pain", "can't breathe" are caught before any AI runs. The call stays on the line, keeps them calm, and every family member is alerted before the next sentence is spoken. Nothing is ever invented: every note quotes their own words.</p>
+  </div>
+</section>
+
+<hr class="rule" id="how">
+<h2>How it works</h2>
+<ol class="steps">
+  <li><b>You introduce Sunday</b><span class="muted">Add your parent, their language and call time, and who in the family gets which alerts. Join the first call to introduce it.</span></li>
+  <li><b>The phone rings</b><span class="muted">"Hello Amma, it's Sunday, the daily call from your son Daniyal. How are you today?" Five to twelve minutes, one question at a time.</span></li>
+  <li><b>You get the note</b><span class="muted">Mood, medication, anything mentioned, anything worth a look. Replies to what you asked. On WhatsApp or SMS.</span></li>
+  <li><b>Patterns over weeks</b><span class="muted">Every Sunday evening: how the week went, what to follow up on, what to talk about on your own call. Plain language, never a diagnosis.</span></li>
+</ol>
+
+<hr class="rule">
+<p class="quote">"By 2030 one in five Americans will be over 65, and 53 million family members are already doing this work unpaid. Almost nothing is built for the parent. Sunday is built for the phone they already answer."</p>
+
+<hr class="rule">
+<div class="grid">
+  <div class="col-6">
+    <h3>Three rules, enforced in code</h3>
+    <p class="muted"><b>The parent never touches technology.</b> No app, no account, nothing to charge.<br>
+    <b>Safety does not depend on the AI.</b> Keyword triggers run first; emergencies follow a script and alert the family at once.<br>
+    <b>Nothing is invented.</b> Every observation, alert and memory must quote the parent, or it is dropped.</p>
+  </div>
+  <div class="col-6">
+    <h3>Trust, visible</h3>
+    <p class="muted">Always says it is an assistant sent by the family. Never gives medical advice. Never asks for money, card numbers or codes, and tells the parent so, which also trains them to hang up on real scammers. Recording only with the parent's consent. Everything exportable and deletable by the family.</p>
+  </div>
+</div>
+{% endblock %}

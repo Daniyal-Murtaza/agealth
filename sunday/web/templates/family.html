@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}{{ parent.address() }} - Sunday{% endblock %}
+{% block body %}
+
+<div class="hero-parent">
+  <div>
+    {% if parents|length > 1 %}
+      <div class="switcher small">
+        {% for p in parents %}<a href="/app?parent={{ p.id }}" class="{{ 'current' if p.id == parent.id }}">{{ p.address() }}</a>{% endfor %}
+      </div>
+    {% endif %}
+    <h1>{{ parent.address() }}</h1>
+    <p class="muted mb0">
+      {% if latest %}
+        <span class="mood {{ latest.mood or 'unclear' }}"></span>
+        {% if latest.direction == 'inbound' %}Called Sunday{% else %}Last call{% endif %}
+        {{ latest_local.strftime('%A %H:%M') }}{% if latest.mood %}, {{ mood_label(latest.mood) }}{% endif %}.
+      {% else %}
+        No calls yet.
+      {% endif %}
+      Next call {{ next_call }} ({{ parent.timezone }}).
+    </p>
+  </div>
+  <div class="right small faint">Signed in as {{ me.name }} ({{ me.relation or 'family' }}). You get: <b>{{ {'info':'everything','today':'check-today and urgent','now':'urgent only'}[me.min_alert_tier] }}</b>.</div>
+</div>
+
+{% if not open_alerts and latest %}
+<p class="allgood small" id="alerts">Nothing needs your attention right now.</p>
+{% endif %}
+{% if open_alerts %}
+<div class="stack" id="alerts" style="margin-bottom:1.25rem">
+  {% for a in open_alerts %}
+  <div class="alert {{ a.tier }}">
+    <div>
+      <div class="tag">{{ tier_label(a.tier) }} · {{ local(a.at).strftime('%a %d %b, %H:%M') }}</div>
+      <div>{{ a.text }}</div>
+      {% if a.evidence %}<q>"{{ a.evidence }}"</q>{% endif %}
+    </div>
+    <form method="post" action="/app/{{ parent.id }}/alerts/{{ a.id }}/ack"><button class="btn quiet" type="submit">I've seen this</button></form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="col-8 stack">
+
+    <div class="card">
+      <h2>{% if latest %}{{ 'Today' if latest_local.date() == today else latest_local.strftime('%A') }}'s note{% else %}Today's note{% endif %}
+        {% if latest %}<a class="faint" href="/app/{{ parent.id }}/calls/{{ latest.id }}">read the call &rarr;</a>{% endif %}</h2>
+      {% if latest %}
+        <p class="mb0" style="font-size:1.08rem">{{ latest.summary }}</p>
+        {% if follow_ups %}<p class="small muted mt mb0">Tomorrow Sunday will ask about: {{ follow_ups|join('; ') }}.</p>{% endif %}
+      {% else %}
+        <p class="muted mb0">Sunday hasn't spoken to {{ parent.address() }} yet. The first call is {{ next_call }}.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>The last two weeks <span class="faint">one square per day</span></h2>
+      <div class="strip">
+        {% for d in strip %}
+          {% if d.call %}<a href="/app/{{ parent.id }}/calls/{{ d.call.id }}" class="{{ d.state }} {{ d.mood }} {{ 'today' if d.date == today }}" title="{{ d.date.strftime('%a %d %b') }}: {{ mood_label(d.mood) or 'answered' }}"></a>
+          {% else %}<span class="{{ d.state }} {{ 'today' if d.date == today }}" title="{{ d.date.strftime('%a %d %b') }}: {{ 'no answer' if d.state == 'missed' else 'no call' }}"></span>{% endif %}
+        {% endfor %}
+      </div>
+      <div class="strip-labels">{% for d in strip %}<span>{{ d.date.strftime('%a')[0] }}</span>{% endfor %}</div>
+      <div class="legend">
+        <span><i style="background:var(--bright)"></i>bright</span>
+        <span><i style="background:var(--ok)"></i>okay</span>
+        <span><i style="background:var(--low)"></i>a bit low</span>
+        <span><i style="background:#f3d7d3;outline:1px dashed var(--now);outline-offset:-2px"></i>no answer</span>
+        <span><i style="background:#efe9de"></i>no call</span>
+      </div>
+      <div class="stats mt">
+        <div class="stat"><b>{{ answered_days }}<span class="faint" style="font-size:1rem">/14</span></b><span>days answered</span></div>
+        <div class="stat"><b>{{ med_taken }}</b><span>days medication taken{% if med_missed %}, {{ med_missed }} missed{% endif %}</span></div>
+        <div class="stat"><b>{{ trends.alerts_now + trends.alerts_today }}</b><span>alerts this week</span></div>
+      </div>
+    </div>
+
+    <div class="card" id="tomorrow">
+      <h2>For the next call <span class="faint">anyone in the family can add to this</span></h2>
+      <form method="post" action="/app/{{ parent.id }}/messages">
+        <div class="field">
+          <label for="msg">What should Sunday say or ask?</label>
+          <input id="msg" name="text" type="text" maxlength="400" placeholder="Ask if she wants us to come on Sunday" required>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="kind">Kind</label>
+            <select id="kind" name="kind">
+              <option value="say">Tell {{ parent.address() }}</option>
+              <option value="ask">Ask, and get an answer</option>
+              <option value="remind">Remind</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="on">Hold until (optional)</label>
+            <input id="on" name="on" type="date" min="{{ min_date }}">
+          </div>
+          <div class="field" style="align-self:flex-end"><button class="btn" type="submit">Add</button></div>
+        </div>
+      </form>
+      {% if queued %}
+      <ul class="list">
+        {% for m in queued %}
+        <li>
+          <div><span class="pill {{ m.kind }}">{{ {'say':'tell','ask':'ask','remind':'remind'}[m.kind] }}</span>{{ m.text }}
+            <div class="tiny faint">from {{ m.from_name }}{% if m.remind_on %} · from {{ m.remind_on.strftime('%a %d %b') }}{% endif %}</div></div>
+          <form method="post" action="/app/{{ parent.id }}/messages/{{ m.id }}/remove"><button class="btn quiet" type="submit">Remove</button></form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="small faint mb0 mt">Nothing queued. Sunday will have its usual conversation.</p>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Recent calls</h2>
+      {% if calls %}
+      <ul class="list">
+        {% for c in calls %}
+        <li>
+          <div><span class="mood {{ c.mood or 'unclear' }}"></span><a href="/app/{{ parent.id }}/calls/{{ c.id }}">{{ local(c.started_at).strftime('%A %d %b, %H:%M') }}</a>{% if c.direction == 'inbound' %} <span class="pill">called in</span>{% endif %}
+            <div class="small muted">{{ c.summary[:160] }}{% if c.summary|length > 160 %}&hellip;{% endif %}</div></div>
+          <span class="when">{{ mood_label(c.mood) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted mb0">None yet.</p>{% endif %}
+    </div>
+
+  </div>
+
+  <div class="col-4 stack">
+
+    <div class="card">
+      <h2>This week</h2>
+      <pre class="note small">{{ digest }}</pre>
+      {% if seen_alerts %}
+      <details class="mt small"><summary>Alerts already seen ({{ seen_alerts|length }})</summary>
+        <ul class="list">{% for a in seen_alerts %}<li><div>{{ a.text }}<div class="tiny faint">{{ tier_label(a.tier) }} · seen by {{ a.acknowledged_by }}</div></div></li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+    </div>
+
+    <div class="card" id="knows">
+      <h2>What Sunday knows</h2>
+      <form method="post" action="/app/{{ parent.id }}/memories">
+        <div class="field">
+          <input name="text" type="text" maxlength="300" placeholder="Her sister Rukhsana calls on Fridays" required>
+        </div>
+        <div class="row">
+          <div class="field"><input name="topic" type="text" maxlength="30" placeholder="topic (family, health, home)"></div>
+          <div class="field" style="flex:0 0 auto"><button class="btn sm" type="submit">Tell Sunday</button></div>
+        </div>
+      </form>
+      <ul class="list small">
+        {% for m in memories %}
+        <li><div>{{ m.text }}<div class="tiny faint">{{ m.topic or 'note' }}{% if m.source and m.source != 'family' %} · heard on a call{% endif %}</div></div>
+          <form method="post" action="/app/{{ parent.id }}/memories/{{ m.id }}/remove"><button class="btn quiet" type="submit" title="Forget this">&times;</button></form></li>
+        {% else %}<li class="faint">Nothing yet. Grandchildren's names, the knee, the neighbour.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="card" id="settings">
+      <h2>Settings</h2>
+      <form method="post" action="/app/{{ parent.id }}/settings">
+        <div class="row">
+          <div class="field"><label>Call time</label><input name="call_time" type="time" value="{{ parent.call_time }}"></div>
+          <div class="field"><label>Language</label>
+            <select name="language">{% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if code == parent.language }}>{{ name }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="field"><label>Timezone</label>
+          <select name="timezone">{% for tz in timezones %}<option value="{{ tz }}" {{ 'selected' if tz == parent.timezone }}>{{ tz }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Sunday calls them</label><input name="preferred_name" type="text" value="{{ parent.preferred_name }}" maxlength="40"></div>
+        <button class="btn sm" type="submit">Save</button>
+      </form>
+      <h3 class="mt">Who hears what</h3>
+      <ul class="list small">
+        {% for m in members %}
+        <li>
+          <div><b>{{ m.name }}</b> <span class="faint">{{ m.relation }}</span>
+            {% if me and m.id == me.id %}
+            <form method="post" action="/app/{{ parent.id }}/members/{{ m.id }}" class="row mt" style="gap:.5rem">
+              <select name="min_alert_tier"><option value="info" {{ 'selected' if m.min_alert_tier=='info' }}>everything</option><option value="today" {{ 'selected' if m.min_alert_tier=='today' }}>check-today + urgent</option><option value="now" {{ 'selected' if m.min_alert_tier=='now' }}>urgent only</option></select>
+              <select name="channel"><option value="whatsapp" {{ 'selected' if m.channel=='whatsapp' }}>WhatsApp</option><option value="sms" {{ 'selected' if m.channel=='sms' }}>SMS</option><option value="console" {{ 'selected' if m.channel=='console' }}>console</option></select>
+              <button class="btn quiet" type="submit" style="flex:0 0 auto">Save</button>
+            </form>
+            {% else %}<div class="tiny faint">{{ {'info':'everything','today':'check-today + urgent','now':'urgent only'}[m.min_alert_tier] }} · {{ m.channel }}</div>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="small mt mb0"><a href="/app/{{ parent.id }}/export.json">Export everything</a> <span class="faint">transcripts, notes, alerts, as JSON. It's yours.</span></p>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

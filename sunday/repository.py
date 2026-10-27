@@ -27,6 +27,10 @@ from sunday.models import (
 )
 
 
+def _digits(phone: str) -> str:
+    return "".join(ch for ch in (phone or "") if ch.isdigit())
+
+
 class Repository:
     def __init__(self, db_path: Path | str) -> None:
         if str(db_path) != ":memory:":
@@ -119,6 +123,29 @@ class Repository:
     def family_for(self, parent_id: str) -> list[FamilyMember]:
         with self.session() as s:
             return list(s.scalars(select(FamilyMember).where(FamilyMember.parent_id == parent_id)))
+
+    def get_family_member(self, member_id: str) -> FamilyMember | None:
+        with self.session() as s:
+            return s.get(FamilyMember, member_id)
+
+    def update_family_member(self, member_id: str, **fields: Any) -> FamilyMember:
+        with self.session() as s:
+            m = s.get(FamilyMember, member_id)
+            if m is None:
+                raise KeyError(member_id)
+            for k, v in fields.items():
+                setattr(m, k, v)
+            return m
+
+    def members_by_phone(self, phone: str) -> list[FamilyMember]:
+        """Every family row for this phone, one per parent they look after. This is how a
+        family member logs in: the phone Sunday already sends their notes to."""
+        digits = _digits(phone)
+        if not digits:
+            return []
+        with self.session() as s:
+            rows = list(s.scalars(select(FamilyMember)))
+        return [m for m in rows if _digits(m.phone) == digits]
 
     # --- calls --------------------------------------------------------------
 
@@ -266,6 +293,18 @@ class Repository:
             if a is not None:
                 a.notified_at = datetime.now(UTC)
 
+    def get_alert(self, alert_id: str) -> Alert | None:
+        with self.session() as s:
+            return s.get(Alert, alert_id)
+
+    def acknowledge_alert(self, alert_id: str, parent_id: str, by: str) -> bool:
+        with self.session() as s:
+            a = s.get(Alert, alert_id)
+            if a is None or a.parent_id != parent_id:
+                return False
+            a.acknowledged_by = by
+            return True
+
     def alerts_since(self, parent_id: str, *, days: int) -> list[Alert]:
         since = datetime.now(UTC) - timedelta(days=days)
         with self.session() as s:
@@ -286,6 +325,14 @@ class Repository:
             s.add(m)
             s.flush()
             return m
+
+    def deactivate_memory(self, memory_id: int, parent_id: str) -> bool:
+        with self.session() as s:
+            m = s.get(Memory, memory_id)
+            if m is None or m.parent_id != parent_id:
+                return False
+            m.active = False
+            return True
 
     def memories_for(self, parent_id: str) -> list[Memory]:
         with self.session() as s:
@@ -335,13 +382,23 @@ class Repository:
 
     def parent_by_phone(self, phone: str) -> Parent | None:
         """Who is calling us? Matched on digits only, so "+92 300..." and "+92300..." agree."""
-        digits = "".join(ch for ch in phone if ch.isdigit())
+        digits = _digits(phone)
         if not digits:
             return None
         for p in self.list_parents():
-            if "".join(ch for ch in p.phone if ch.isdigit()) == digits:
+            if _digits(p.phone) == digits:
                 return p
         return None
+
+    def delete_message(self, message_id: str, parent_id: str) -> bool:
+        """Remove an undelivered queued message. Scoped to the parent so a family member
+        can only remove items on their own parent's queue."""
+        with self.session() as s:
+            m = s.get(QueuedMessage, message_id)
+            if m is None or m.parent_id != parent_id or m.delivered_call_id:
+                return False
+            s.delete(m)
+            return True
 
     def mark_message_delivered(self, message_id: str, call_id: str, response: str = "") -> None:
         with self.session() as s:

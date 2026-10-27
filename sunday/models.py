@@ -99,6 +99,8 @@ class Parent(Base):
         from zoneinfo import ZoneInfo
 
         at = at or datetime.now(UTC)
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=UTC)  # SQLite hands back naive UTC
         try:
             return at.astimezone(ZoneInfo(self.timezone or "UTC"))
         except Exception:  # noqa: BLE001 - a bad tz string must not break a call
