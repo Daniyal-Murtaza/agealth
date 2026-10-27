@@ -5,6 +5,7 @@ cloudflared) or a reverse proxy in front and set ``SUNDAY_PUBLIC_URL``.
 
 Routes
   GET  /                           public landing page (no login)
+  GET  /start, POST /start         self-serve onboarding: add a parent and yourself
   GET  /login, POST /login         family login: a one-time link to the phone on file
   GET  /auth/{token}               redeem the link, set the session cookie
   POST /logout
@@ -14,7 +15,13 @@ Routes
   POST /app/{pid}/memories         tell Sunday something; /remove to retire it
   POST /app/{pid}/settings         call time, timezone, language
   POST /app/{pid}/members/{id}     a member's own alert level and channel
-  GET  /app/{pid}/calls/{call_id}  one call: note, transcript, what was noticed
+  POST /app/{pid}/members          invite a sibling: they get notes and can sign in
+  POST /app/{pid}/medications      add or remove what the call asks about
+  POST /app/{pid}/consent          the parent's recording consent, recorded by the family
+  POST /app/{pid}/call             ring the parent now (the introductory call, or any time)
+  GET  /app/{pid}/calls/{call_id}  one call: note, transcript, what was noticed, recording
+  GET  /app/{pid}/calls/{call_id}/recording.mp3   the recording, family only
+  POST /twilio/recording/{call_id} Twilio (signed): a recording finished
   GET  /app/{pid}/export.json      everything about this parent, for the family to keep
   POST /twilio/voice/{parent_id}   Twilio (signed): the parent answered our call
   POST /twilio/inbound             Twilio (signed): the parent rang us
@@ -34,19 +41,32 @@ from pathlib import Path
 from zoneinfo import available_timezones
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from sunday.app import Services
 from sunday.brain.conversation import LANGUAGE_NAMES
-from sunday.calls.dialer import record_outcome
+from sunday.calls.dialer import dial, record_outcome
 from sunday.calls.session import CallSession
 from sunday.calls.transport import twilio_router
 from sunday.logging_setup import get_logger
 from sunday.notify.digest import compute_trends, format_digest
 from sunday.notify.pipeline import notify_no_answer
-from sunday.web.auth import SESSION_COOKIE, Auth, Viewer, digits_only, login_message
+from sunday.web.auth import (
+    SESSION_COOKIE,
+    Auth,
+    RateLimiter,
+    Viewer,
+    digits_only,
+    login_message,
+)
 from sunday.web.twilio_auth import make_twilio_verifier
 
 log = get_logger("web")
@@ -104,6 +124,78 @@ def create_app(services: Services) -> FastAPI:
     async def landing(request: Request):
         return render(request, "landing.html", viewer=auth.viewer_from_request(request))
 
+    start_limit = RateLimiter(limit=5, window_s=3600)
+
+    @app.get("/start", response_class=HTMLResponse)
+    async def start_form(request: Request):
+        return render(
+            request,
+            "start.html",
+            viewer=auth.viewer_from_request(request),
+            timezones=_TIMEZONES,
+            errors=[],
+            form={},
+        )
+
+    @app.post("/start", response_class=HTMLResponse)
+    async def start_submit(request: Request):
+        """Create the parent and the first family member, then send that member their
+        sign-in link. Daily calls begin only after the introductory call, which the member
+        places from their page, so a stranger's number typed here is never rung on its own."""
+        form = {k: str(v).strip() for k, v in (await request.form()).items()}
+        errors = _validate_start(form)
+        addr = request.client.host if request.client else "?"
+        if not errors and not start_limit.allow(addr):
+            errors.append("Too many sign-ups from this connection. Please try again later.")
+        if errors:
+            return render(request, "start.html", timezones=_TIMEZONES, errors=errors, form=form)
+        your_digits = digits_only(form["your_phone"])
+        if repo.parent_by_phone(form["parent_phone"]) or auth.members_for_phone(your_digits):
+            # Already set up: do not create a second household; send the sign-in link.
+            members = auth.members_for_phone(your_digits)
+            if members:
+                _send_login(members[0], your_digits)
+            return render(request, "start_done.html", form=form, existing=True)
+        parent = repo.add_parent(
+            name=form["parent_name"],
+            preferred_name=form.get("call_me") or form["parent_name"].split()[0],
+            phone=_e164(form["parent_phone"]),
+            language=form.get("language", "en"),
+            timezone=form.get("timezone", "UTC"),
+            call_time=form.get("call_time", "09:00"),
+            introduced_by=f"your {form['relation']} {form['your_name']}".strip(),
+            medications=[
+                {"name": m.strip(), "when": "morning"}
+                for m in form.get("medications", "").split(",")
+                if m.strip()
+            ],
+            intro_done=False,
+        )
+        member = repo.add_family_member(
+            parent.id,
+            name=form["your_name"],
+            relation=form["relation"],
+            phone=_e164(form["your_phone"]),
+            channel="whatsapp" if settings.twilio_ready() else "console",
+            min_alert_tier="info",
+            is_primary=True,
+        )
+        for line in form.get("about", "").splitlines():
+            if line.strip():
+                repo.add_memory(parent.id, line.strip()[:300], topic="family", source="family")
+        _send_login(member, your_digits)
+        log.info("onboarded %s for %s (%s)", member.name, parent.name, parent.id)
+        return render(request, "start_done.html", form=form, existing=False)
+
+    def _send_login(member, digits: str) -> None:
+        link = f"{public_url}/auth/{auth.make_login_token(digits)}"
+        try:
+            services.messenger.send(
+                member, login_message(member.name, link, settings.login_link_minutes)
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.error("login link to %s failed: %s", member.name, exc)
+
     @app.get("/login", response_class=HTMLResponse)
     async def login_form(request: Request):
         if auth.viewer_from_request(request):
@@ -126,7 +218,15 @@ def create_app(services: Services) -> FastAPI:
                     log.error("login link to %s failed: %s", members[0].name, exc)
         return render(request, "login_sent.html", phone=phone)
 
-    @app.get("/auth/{token}")
+    @app.get("/auth/{token}", response_class=HTMLResponse)
+    async def confirm(request: Request, token: str):
+        # WhatsApp and iMessage fetch links to build previews. A GET must not consume the
+        # one-time token, so this page just checks it and posts back when the person taps.
+        if not auth.peek_login_token(token):
+            return RedirectResponse("/login?expired=1", status_code=303)
+        return render(request, "auth_confirm.html", token=token)
+
+    @app.post("/auth/{token}")
     async def redeem(token: str):
         phone = auth.redeem_login_token(token)
         if phone is None:
@@ -158,7 +258,12 @@ def create_app(services: Services) -> FastAPI:
         p = parent_for(viewer, parent) if parent else viewer.parent(None)
         if p is None:
             raise HTTPException(status_code=404)
-        return render(request, "family.html", viewer=viewer, **_family_context(repo, p, viewer))
+        return render(
+            request,
+            "family.html",
+            viewer=viewer,
+            **_family_context(repo, p, viewer, twilio_ready=settings.twilio_ready()),
+        )
 
     @app.post("/app/{pid}/messages")
     async def add_message(
@@ -267,6 +372,102 @@ def create_app(services: Services) -> FastAPI:
             repo.update_family_member(member_id, **fields)
         return RedirectResponse(f"/app?parent={p.id}#settings", status_code=303)
 
+    @app.post("/app/{pid}/members")
+    async def invite_member(
+        pid: str,
+        name: str = Form(""),
+        relation: str = Form(""),
+        phone: str = Form(""),
+        min_alert_tier: str = Form("info"),
+        viewer: Viewer = Depends(current_viewer),
+    ):
+        """Add a sibling. They get the notes at their level and can sign in with that number."""
+        p = parent_for(viewer, pid)
+        name, phone = name.strip()[:60], phone.strip()
+        if name and len(digits_only(phone)) >= 7:
+            already = any(digits_only(m.phone) == digits_only(phone) for m in repo.family_for(p.id))
+            if not already:
+                m = repo.add_family_member(
+                    p.id,
+                    name=name,
+                    relation=relation.strip()[:30],
+                    phone=_e164(phone),
+                    channel="whatsapp" if settings.twilio_ready() else "console",
+                    min_alert_tier=min_alert_tier
+                    if min_alert_tier in ("info", "today", "now")
+                    else "info",
+                )
+                _send_login(m, digits_only(phone))
+        return RedirectResponse(f"/app?parent={p.id}#settings", status_code=303)
+
+    @app.post("/app/{pid}/medications")
+    async def medications(
+        pid: str,
+        add: str = Form(""),
+        when: str = Form("morning"),
+        remove: str = Form(""),
+        viewer: Viewer = Depends(current_viewer),
+    ):
+        p = parent_for(viewer, pid)
+        meds = [dict(m) for m in (p.medications or [])]
+        if remove:
+            meds = [m for m in meds if m.get("name") != remove]
+        if add.strip():
+            meds.append({"name": add.strip()[:60], "when": when.strip()[:20] or "morning"})
+        repo.update_parent(p.id, medications=meds)
+        return RedirectResponse(f"/app?parent={p.id}#settings", status_code=303)
+
+    @app.post("/app/{pid}/consent")
+    async def consent(
+        pid: str, recording: str = Form(""), viewer: Viewer = Depends(current_viewer)
+    ):
+        """The family records the parent's consent to recording. Sunday says it is recording at
+        the start of every recorded call, so the parent hears it each time."""
+        p = parent_for(viewer, pid)
+        repo.update_parent(p.id, consent_recording=recording == "yes")
+        return RedirectResponse(f"/app?parent={p.id}#settings", status_code=303)
+
+    @app.post("/app/{pid}/call", response_class=HTMLResponse)
+    async def call_now(request: Request, pid: str, viewer: Viewer = Depends(current_viewer)):
+        """Ring the parent now. This is how the introductory call is placed: the family member
+        is next to the parent (or on the phone with them) and introduces Sunday."""
+        p = parent_for(viewer, pid)
+        if not settings.twilio_ready() or not settings.public_url:
+            return render(
+                request, "call_now.html", viewer=viewer, parent=p, placed=False, call_id=""
+            )
+        if any(c.status in ("scheduled", "in_progress") for c in repo.recent_calls(p.id, days=1)):
+            return render(
+                request,
+                "call_now.html",
+                viewer=viewer,
+                parent=p,
+                placed=True,
+                call_id="",
+                busy=True,
+            )
+        call_id = dial(repo, services.telephony, settings, p)
+        return render(
+            request, "call_now.html", viewer=viewer, parent=p, placed=True, call_id=call_id
+        )
+
+    @app.get("/app/{pid}/calls/{call_id}/recording.mp3")
+    async def recording(pid: str, call_id: str, viewer: Viewer = Depends(current_viewer)):
+        p = parent_for(viewer, pid)
+        call = repo.get_call(call_id)
+        if call is None or call.parent_id != p.id or not call.recording_url:
+            raise HTTPException(status_code=404)
+        try:
+            data = services.telephony.recording_bytes(call.recording_url)
+        except Exception as exc:  # noqa: BLE001
+            log.error("recording fetch failed for %s: %s", call_id, exc)
+            raise HTTPException(status_code=502, detail="recording unavailable") from exc
+        return Response(
+            content=data,
+            media_type="audio/mpeg",
+            headers={"Cache-Control": "private, no-store", "Content-Disposition": "inline"},
+        )
+
     @app.get("/app/{pid}/calls/{call_id}", response_class=HTMLResponse)
     async def call_page(
         request: Request, pid: str, call_id: str, viewer: Viewer = Depends(current_viewer)
@@ -355,8 +556,9 @@ def create_app(services: Services) -> FastAPI:
         parent = repo.get_parent(parent_id)
         if parent is None:
             raise HTTPException(status_code=404)
-        session = services.new_session(parent)
+        session = services.new_session(parent, provider_call_id=call_sid)
         _SESSIONS[call_sid] = session
+        services.begin_recording(session, call_sid)
         return session
 
     def make_inbound_session(from_number: str, call_sid: str) -> CallSession | None:
@@ -365,6 +567,7 @@ def create_app(services: Services) -> FastAPI:
             return None
         session = services.new_session(parent, direction="inbound")
         _SESSIONS[call_sid] = session
+        services.begin_recording(session, call_sid)
         return session
 
     def on_end(session: CallSession) -> None:
@@ -400,6 +603,33 @@ def create_app(services: Services) -> FastAPI:
                 notify_no_answer(repo, services.messenger, call.parent_id)
         return PlainTextResponse("ok")
 
+    @app.post("/twilio/recording/{call_id}", dependencies=[Depends(verify)])
+    async def recording_done(
+        call_id: str,
+        RecordingSid: str = Form(""),  # noqa: N803
+        RecordingUrl: str = Form(""),  # noqa: N803
+        RecordingDuration: str = Form("0"),  # noqa: N803
+        RecordingStatus: str = Form("completed"),  # noqa: N803
+    ) -> PlainTextResponse:
+        call = repo.get_call(call_id)
+        if call is None or RecordingStatus != "completed":
+            return PlainTextResponse("ok")
+        parent = repo.get_parent(call.parent_id)
+        if parent is None or not parent.consent_recording:
+            log.warning("recording callback for %s without consent; ignoring", call_id)
+            return PlainTextResponse("ok")
+        try:
+            seconds = int(float(RecordingDuration or 0))
+        except ValueError:
+            seconds = 0
+        repo.update_call(
+            call_id,
+            recording_sid=RecordingSid or call.recording_sid,
+            recording_url=RecordingUrl,
+            recording_seconds=seconds,
+        )
+        return PlainTextResponse("ok")
+
     @app.get("/health")
     async def health() -> dict:
         return {"ok": True}
@@ -407,10 +637,72 @@ def create_app(services: Services) -> FastAPI:
     return app
 
 
+# -- onboarding helpers ------------------------------------------------------------------------
+
+_COMMON_TZ = [
+    "Asia/Karachi",
+    "Asia/Kolkata",
+    "Asia/Dhaka",
+    "Asia/Dubai",
+    "Europe/London",
+    "Europe/Paris",
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "America/Toronto",
+    "Australia/Sydney",
+    "UTC",
+]
+_TIMEZONES = _COMMON_TZ + sorted(
+    t for t in available_timezones() if "/" in t and not t.startswith("Etc") and t not in _COMMON_TZ
+)
+
+
+def _e164(phone: str) -> str:
+    """Normalise to +digits. Accepts spaces, dashes and brackets."""
+    digits = digits_only(phone)
+    return f"+{digits}" if digits else phone.strip()
+
+
+def _validate_start(form: dict) -> list[str]:
+    errors = []
+    if len(form.get("your_name", "")) < 2:
+        errors.append("Please tell us your name.")
+    if not form.get("relation"):
+        errors.append("Please say how you are related (son, daughter, niece...).")
+    if len(digits_only(form.get("your_phone", ""))) < 7 or not form.get(
+        "your_phone", ""
+    ).startswith("+"):
+        errors.append("Your mobile number needs the country code, like +1 555 010 0001.")
+    if len(form.get("parent_name", "")) < 2:
+        errors.append("Please tell us your parent's name.")
+    if len(digits_only(form.get("parent_phone", ""))) < 7 or not form.get(
+        "parent_phone", ""
+    ).startswith("+"):
+        errors.append("Your parent's number needs the country code, like +92 300 1234567.")
+    if digits_only(form.get("your_phone", "")) == digits_only(form.get("parent_phone", "")):
+        errors.append("Your number and your parent's number are the same.")
+    if form.get("language", "en") not in LANGUAGE_NAMES:
+        errors.append("Please pick a language.")
+    if form.get("timezone", "UTC") not in available_timezones():
+        errors.append("Please pick a timezone.")
+    try:
+        hh, mm = form.get("call_time", "09:00").split(":")
+        assert 0 <= int(hh) < 24 and 0 <= int(mm) < 60
+    except (ValueError, AssertionError):
+        errors.append("The call time should look like 09:00.")
+    if form.get("confirm") != "yes":
+        errors.append(
+            "Please confirm you are a family member and your parent knows you are setting this up."
+        )
+    return errors
+
+
 # -- view model -------------------------------------------------------------------------------
 
 
-def _family_context(repo, p, viewer: Viewer) -> dict:
+def _family_context(repo, p, viewer: Viewer, *, twilio_ready: bool = False) -> dict:
     now_local = p.local_now()
     today = now_local.date()
     calls = repo.recent_calls(p.id, days=30, limit=60)
@@ -482,6 +774,8 @@ def _family_context(repo, p, viewer: Viewer) -> dict:
         ),
         "min_date": today.isoformat(),
         "next_call": _next_call_text(p, now_local),
+        "twilio_ready": twilio_ready,
+        "has_calls": bool(completed),
     }
 
 

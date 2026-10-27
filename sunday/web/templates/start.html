@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Start with your parent - Sunday{% endblock %}
+{% block body %}
+<div class="grid" style="margin-top:1.5rem">
+  <div class="col-8">
+    <div class="card">
+      <h1 class="serif" style="font-size:2.2rem">Start with your parent</h1>
+      <p class="muted">Five minutes. Then you place the first call from your page, with you on hand to introduce Sunday. Daily calls begin after that, never before.</p>
+      {% if errors %}
+      <div class="flash warn"><ul style="margin:0;padding-left:1.1rem">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+      {% endif %}
+      <form method="post" action="/start">
+        <h3>About you</h3>
+        <div class="row">
+          <div class="field"><label for="your_name">Your name</label><input id="your_name" name="your_name" type="text" value="{{ form.your_name or '' }}" required maxlength="60"></div>
+          <div class="field"><label for="relation">You are their</label><input id="relation" name="relation" type="text" placeholder="son, daughter, niece" value="{{ form.relation or '' }}" required maxlength="30"></div>
+        </div>
+        <div class="field"><label for="your_phone">Your mobile, with country code</label><input id="your_phone" name="your_phone" type="tel" inputmode="tel" placeholder="+1 555 010 0001" value="{{ form.your_phone or '' }}" required>
+          <div class="tiny faint">Notes and alerts come here on WhatsApp or SMS, and it is how you sign in. No password.</div></div>
+
+        <h3 class="mt">About your parent</h3>
+        <div class="row">
+          <div class="field"><label for="parent_name">Their name</label><input id="parent_name" name="parent_name" type="text" value="{{ form.parent_name or '' }}" required maxlength="80"></div>
+          <div class="field"><label for="call_me">What Sunday should call them</label><input id="call_me" name="call_me" type="text" placeholder="Amma, Baba, Mrs Khan" value="{{ form.call_me or '' }}" maxlength="40"></div>
+        </div>
+        <div class="field"><label for="parent_phone">Their phone, with country code</label><input id="parent_phone" name="parent_phone" type="tel" inputmode="tel" placeholder="+92 300 1234567" value="{{ form.parent_phone or '' }}" required>
+          <div class="tiny faint">Any phone that rings. Landline or mobile. Nothing to install.</div></div>
+        <div class="row">
+          <div class="field"><label for="language">Language</label>
+            <select id="language" name="language">{% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if (form.language or 'en') == code }}>{{ name }}</option>{% endfor %}</select></div>
+          <div class="field"><label for="call_time">Daily call time</label><input id="call_time" name="call_time" type="time" value="{{ form.call_time or '09:00' }}"></div>
+          <div class="field"><label for="timezone">Their timezone</label>
+            <select id="timezone" name="timezone">{% for tz in timezones %}<option value="{{ tz }}" {{ 'selected' if (form.timezone or 'UTC') == tz }}>{{ tz }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="field"><label for="medications">Medications Sunday should ask about <span class="faint">(optional, comma separated)</span></label><input id="medications" name="medications" type="text" placeholder="blood pressure tablet, eye drops" value="{{ form.medications or '' }}" maxlength="200"></div>
+        <div class="field"><label for="about">A few things Sunday should know <span class="faint">(optional, one per line)</span></label>
+          <textarea id="about" name="about" rows="3" placeholder="Grandchildren are Ayaan (7) and Zara (4).&#10;Neighbour Farida visits on Wednesdays.&#10;Her knee has bothered her since the winter.">{{ form.about or '' }}</textarea></div>
+
+        <div class="field mt"><label style="display:flex;gap:.6rem;align-items:flex-start;color:var(--ink)">
+          <input type="checkbox" name="confirm" value="yes" {{ 'checked' if form.confirm == 'yes' }} style="width:auto;margin-top:.3rem">
+          <span>I am a family member, and my parent knows I am setting this up. Sunday will always say it is an assistant sent by the family.</span></label></div>
+        <button class="btn" type="submit">Set up Sunday</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-4 stack">
+    <div class="card">
+      <h3>What happens next</h3>
+      <ol class="muted small" style="padding-left:1.2rem;margin:0">
+        <li>We send a sign-in link to your phone.</li>
+        <li>On your page, tap <b>Call {{ form.call_me or 'them' }} now</b> while you are with them, or on the phone to them. Sunday introduces itself; you introduce Sunday.</li>
+        <li>Daily calls start the next morning at the time you chose. You get a short note after each one.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Nothing is sold, nothing is invented</h3>
+      <p class="muted small mb0">Your parent's words stay with your family: exportable and deletable from your page at any time. Recording is off unless they agree, and Sunday says so at the start of every recorded call.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -222,6 +222,14 @@ def build_system_prompt(ctx: CallContext, *, max_minutes: int, emergency_number:
     )
 
 
+RECORDING_NOTICE = {
+    "en": "This call is recorded for the family, as you agreed.",
+    "ur": "یہ کال گھر والوں کے لیے ریکارڈ ہو رہی ہے، جیسا آپ نے کہا تھا۔",
+    "hi": "यह कॉल घरवालों के लिए रिकॉर्ड हो रही है, जैसा आपने कहा था।",
+    "pa": "ਇਹ ਕਾਲ ਘਰਦਿਆਂ ਲਈ ਰਿਕਾਰਡ ਹੋ ਰਹੀ ਹੈ, ਜਿਵੇਂ ਤੁਸੀਂ ਕਿਹਾ ਸੀ।",
+}
+
+
 def inbound_opening_line(ctx: CallContext) -> str:
     """The parent rang Sunday. Fixed, honest, and glad to hear from them."""
     me = ctx.parent.address()

@@ -40,7 +40,7 @@ def format_alert(parent: Parent, alert: Alert) -> str:
     return body
 
 
-def format_summary(parent: Parent, call: Call, analysis: CallAnalysis) -> str:
+def format_summary(parent: Parent, call: Call, analysis: CallAnalysis, *, link: str = "") -> str:
     when = (call.ended_at or datetime.now(UTC)).strftime("%a %d %b, %H:%M")
     mood = {
         "bright": "sounded bright",
@@ -64,6 +64,9 @@ def format_summary(parent: Parent, call: Call, analysis: CallAnalysis) -> str:
     replies = [r for r in analysis.message_replies if r.response.strip()]
     if replies:
         lines += ["", "Replies to your messages:"] + [f"- {r.response}" for r in replies[:3]]
+    if link:
+        verb = "Read or listen" if parent.consent_recording else "Read the call"
+        lines += ["", f"{verb}: {link}"]
     return "\n".join(lines)
 
 
@@ -108,6 +111,7 @@ def finish_call(
     *,
     signals: list[Signal],
     delivered_message_ids: set[str],
+    public_url: str = "",
 ) -> CallAnalysis | None:
     call = repo.get_call(call_id)
     if call is None or call.notified_at is not None:
@@ -116,6 +120,9 @@ def finish_call(
     if parent is None:
         return None
     family = repo.family_for(parent.id)
+    if not parent.intro_done and any(t.speaker == "parent" for t in call.turns):
+        repo.update_parent(parent.id, intro_done=True)  # the introductory call happened
+    link = f"{public_url.rstrip('/')}/app/{parent.id}/calls/{call_id}" if public_url else ""
 
     # 1. Emergencies first, before anything slow.
     _deliver_alerts(repo, parent, family, messenger)
@@ -163,7 +170,7 @@ def finish_call(
 
     # 4. Tell the family.
     _deliver_alerts(repo, parent, family, messenger)  # anything new from the analysis
-    text = format_summary(parent, repo.get_call(call_id), analysis)
+    text = format_summary(parent, repo.get_call(call_id), analysis, link=link)
     for member in family:
         if wants(member, "info"):
             try:

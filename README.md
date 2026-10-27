@@ -11,7 +11,9 @@ and SQLite for everything that must not be lost.
 - **Nothing invented.** Every observation, alert and memory must quote the parent's words; quotes not found in the transcript are dropped. Household chores become follow-ups, never alerts. No medical advice, ever.
 - **They can call it too.** Save the number as "Sunday". A call from the parent's own phone is answered by name, skips the morning survey, passes on anything waiting and just talks; the family gets the same short note.
 - **Reminders on the right day.** "Your appointment is Tuesday at 10 with Dr Khan" is queued once and said on the day you choose, not tonight.
-- **A quiet page for the family.** Sign in with the phone Sunday already messages (no password: a one-time link). Today's note, the last two weeks at a glance, alerts to acknowledge, what to ask tomorrow, what Sunday knows, who hears what, and a one-click export of everything.
+- **Set up in five minutes, from the website.** "Start with your parent" creates the household and sends you a sign-in link. You place the introductory call from your page, with you on hand to introduce Sunday; daily calls begin only after that, so a number typed into a form is never rung on its own.
+- **A quiet page for the family.** Sign in with the phone Sunday already messages (no password: a one-time link). Today's note, the last two weeks at a glance, alerts to acknowledge, what to ask tomorrow, what Sunday knows, medications, who hears what, invite a sibling, and a one-click export of everything.
+- **Recordings, only with consent.** The family records the parent's agreement; Sunday says "this call is recorded for the family, as you agreed" at the start of every recorded call; the family listens from the call page, and the note links to it.
 - **Runs with no accounts.** An offline brain, a console messenger and a terminal simulator let you design the conversation before paying for anything.
 
 ![The family page](docs/family-page.png)
@@ -97,13 +99,15 @@ sunday demo       # seeds Amma with two weeks of history so the page has somethi
 sunday serve      # http://127.0.0.1:8000 - loopback only; put a tunnel in front for real use
 ```
 
-Open http://127.0.0.1:8000, click Family sign in, and enter `+1 555 010 0001`
-(Daniyal, from the demo). With the console messenger the one-time link prints
+Open http://127.0.0.1:8000. "Start with your parent" walks a new family through
+set-up; or click Family sign in and enter `+1 555 010 0001` (Daniyal, from the
+demo). With the console messenger the one-time link prints
 in the `sunday serve` terminal; with Twilio configured it arrives on WhatsApp
 or SMS, the same way the daily notes do. The page is scoped to the parents
 whose family record carries that number, and nothing else.
 
 ![Landing page](docs/landing.png)
+![Start with your parent](docs/start-page.png)
 
 ## Real calls (Twilio)
 
@@ -111,8 +115,9 @@ whose family record carries that number, and nothing else.
 2. Expose the server: `ngrok http 8000` (or `cloudflared`) and set `SUNDAY_PUBLIC_URL` to the tunnel address.
 3. `sunday serve` in one terminal. It binds to 127.0.0.1 and hosts the family page and the Twilio webhooks; the tunnel is the public face. Twilio's webhooks are verified against your auth token and rejected otherwise.
 4. In another: `sunday call par_XXXX`. The parent's phone rings; the family note arrives when the call ends.
-5. So the parent can call in: in the Twilio console set the number's voice webhook to `https://<your-tunnel>/twilio/inbound` (POST). Sunday matches the caller id to a parent; unknown numbers hear a kind refusal. Save the number in the parent's phone as "Sunday".
-6. For daily calls run `sunday due` every five minutes from cron. It calls whoever's local call time it is, once per day, records no-answers, and on Sunday evening (local time) sends each family their weekly report.
+5. Recordings: tick "Recording" on the family page once the parent has agreed. Twilio records the call (dual channel) and posts to `/twilio/recording/{call_id}` when it is ready; the family listens through the app, never from a Twilio URL.
+6. So the parent can call in: in the Twilio console set the number's voice webhook to `https://<your-tunnel>/twilio/inbound` (POST). Sunday matches the caller id to a parent; unknown numbers hear a kind refusal. Save the number in the parent's phone as "Sunday".
+7. For daily calls run `sunday due` every five minutes from cron. It rings whoever's local call time it is, retries once fifteen minutes later if nobody answered and then leaves them alone for the day, records no-answers by day, and on Sunday evening (local time) sends each family their weekly report.
 
 ```
 */5 * * * * cd /path/to/agealth && .venv/bin/sunday due >> data/due.log 2>&1
@@ -144,15 +149,21 @@ Sunday is staying on the line with them. Please call them or go now.
 ## Verify offline
 
 ```bash
-pytest                                   # 82 offline tests, ~2s
+pytest                                   # 88 offline tests, ~3s
 ruff check . && ruff format --check .    # lint / format
 ```
 
 The tests use a scripted model and an in-memory database, so they need no
-keys. They cover: the family page (magic-link sign-in that is single-use and
-quiet about unknown numbers, a Secure HttpOnly session, scoping so another
-family's parent is invisible even by id, every action, the call page and the
-export); Twilio webhooks rejected without a valid signature and the relay
+keys. They cover: self-serve onboarding (validation, the household it creates,
+the sign-in link it sends, daily calls gated until the introductory call, no
+duplicate household for a known number); recordings only with consent, the
+notice in the opening line, the Twilio recording callback, and the audio
+route refusing anyone outside the family; inviting a sibling and editing
+medications; one retry after a missed morning and never more, with no-answers
+counted by day; the family page (magic-link sign-in that is single-use, survives
+a link preview, and is quiet about unknown numbers, a Secure HttpOnly session,
+scoping so another family's parent is invisible even by id, every action, the
+call page and the export); Twilio webhooks rejected without a valid signature and the relay
 refusing an unregistered call; the server refusing to start without a secret;
 a normal call through the plan to a warm close; a parent
 calling in and getting a conversation instead of a survey, with the pipeline

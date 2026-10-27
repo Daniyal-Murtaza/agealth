@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Check your phone - Sunday{% endblock %}
+{% block body %}
+<div class="narrow" style="margin: 3rem auto;">
+  <div class="card">
+    {% if existing %}
+      <h1 class="serif" style="font-size:2rem">You're already set up</h1>
+      <p class="muted">That number is already on a family account, so we've sent a sign-in link to <b>{{ form.your_phone }}</b> instead of creating a second one.</p>
+    {% else %}
+      <h1 class="serif" style="font-size:2rem">Check your phone, {{ form.your_name }}</h1>
+      <p class="muted">A sign-in link is on its way to <b>{{ form.your_phone }}</b>. Tap it, then tap <b>Call {{ form.call_me or form.parent_name.split()[0] }} now</b> when you're with them so you can introduce Sunday. Daily calls start the morning after.</p>
+    {% endif %}
+    <p class="small faint mb0">Nothing arrived? <a href="/login">Ask for a new link</a>.</p>
+  </div>
+</div>
+{% endblock %}

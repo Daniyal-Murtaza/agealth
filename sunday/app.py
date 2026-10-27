@@ -74,19 +74,29 @@ class Services:
         )
 
     def new_session(
-        self, parent: Parent, *, country: str | None = None, direction: str = "outbound"
+        self,
+        parent: Parent,
+        *,
+        country: str | None = None,
+        direction: str = "outbound",
+        provider_call_id: str = "",
     ) -> CallSession:
         """A live call. ``now`` alerts are sent to the family the moment they fire, from inside
-        the call; everything else waits for :meth:`complete`."""
+        the call; everything else waits for :meth:`complete`. For a call we placed, the Call
+        row ``dial`` created (found by the provider's id) is reused rather than duplicated."""
 
         def urgent(_alert) -> None:
             notify_urgent(self.repo, self.messenger, parent.id)
 
+        call = self.repo.call_by_provider_id(provider_call_id) if provider_call_id else None
+        if call is not None and call.parent_id != parent.id:
+            call = None
         return CallSession(
             self.repo,
             self.model,
             self.settings,
             parent,
+            call=call,
             country=country,
             on_alert=urgent,
             direction=direction,
@@ -101,4 +111,19 @@ class Services:
             session.call.id,
             signals=list(session.safety.signals),
             delivered_message_ids=set(session.ctx.delivered_message_ids),
+            public_url=self.settings.public_url or "",
         )
+
+    def begin_recording(self, session: CallSession, provider_call_id: str) -> None:
+        """Start recording a live call, only if the parent has consented. Failure is logged
+        and the call goes on unrecorded; a recording is never worth a dropped call."""
+        if not session.parent.consent_recording or not provider_call_id:
+            return
+        base = (self.settings.public_url or "").rstrip("/")
+        try:
+            sid = self.telephony.start_recording(
+                provider_call_id, status_url=f"{base}/twilio/recording/{session.call.id}"
+            )
+            self.repo.update_call(session.call.id, recording_sid=sid)
+        except Exception as exc:  # noqa: BLE001
+            log.error("could not start recording for call %s: %s", session.call.id, exc)

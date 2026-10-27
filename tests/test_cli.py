@@ -219,10 +219,16 @@ def test_web_dashboard_and_status_callbacks(env, tmp_path):
     assert svc.repo.recent_calls(pid, days=1)[0].status == "completed"
 
     # Two unanswered calls -> a 'today' alert goes to Daniyal.
+    from datetime import UTC, datetime, timedelta
+
     from sunday.calls.dialer import dial
 
     c1 = dial(svc.repo, svc.telephony, settings, svc.repo.get_parent(pid))
     client.post(f"/twilio/status/{c1}", data={"CallSid": "CA2", "CallStatus": "no-answer"})
+    # Yesterday's miss plus today's: two days.
+    svc.repo.update_call(c1, scheduled_for=datetime.now(UTC) - timedelta(days=1))
+    for cid in [c.id for c in svc.repo.recent_calls(pid, days=1) if c.status == "completed"]:
+        svc.repo.update_call(cid, started_at=datetime.now(UTC) - timedelta(days=2))
     c2 = dial(svc.repo, svc.telephony, settings, svc.repo.get_parent(pid))
     client.post(f"/twilio/status/{c2}", data={"CallSid": "CA3", "CallStatus": "no-answer"})
     assert any("did not answer today or yesterday" in t for _, t in messenger.sent)
@@ -319,7 +325,10 @@ def _web(env, **overrides):
     kw.update(overrides)
     settings = Settings(_env_file=None, **kw)
     messenger = ConsoleMessenger(echo=False)
-    svc = Services.from_settings(settings, messenger=messenger)
+    from sunday.calls.dialer import FakeTelephony
+
+    # Never dial Twilio from a test, even when the settings look configured.
+    svc = Services.from_settings(settings, messenger=messenger, telephony=FakeTelephony())
     # https base url: the session cookie is Secure, so the client must look like https.
     client = TestClient(create_app(svc), base_url="https://testserver", follow_redirects=False)
     return svc, messenger, client
@@ -329,7 +338,11 @@ def _sign_in(client, messenger, phone):
     r = client.post("/login", data={"phone": phone})
     assert r.status_code == 200 and "Check your phone" in r.text
     link = re.search(r"https://x\.test(/auth/\S+)", messenger.sent[-1][1]).group(1)
+    # A GET (what a WhatsApp link preview does) shows a confirm page and consumes nothing.
     r = client.get(link)
+    assert r.status_code == 200 and "One tap to continue" in r.text
+    assert "set-cookie" not in r.headers
+    r = client.post(link)
     assert r.status_code == 303 and r.headers["location"] == "/app"
     assert "sunday_session=" in r.headers["set-cookie"]
     assert "HttpOnly" in r.headers["set-cookie"] and "Secure" in r.headers["set-cookie"]
@@ -369,11 +382,12 @@ def test_magic_link_login_is_scoped_single_use_and_quiet_about_unknown_numbers(e
     # Daniyal (info tier, console channel) gets a link on his channel.
     link = _sign_in(client, messenger, "+1 555 0001")
     assert messenger.sent[-1][0] == "Daniyal" and "once only" in messenger.sent[-1][1]
-    # The link is single use.
-    r = client.get(link)
-    assert r.status_code == 303 and "expired=1" in r.headers["location"]
+    # The link is single use, for GET and POST alike.
+    assert "expired=1" in client.post(link).headers["location"]
+    assert "expired=1" in client.get(link).headers["location"]
     # A forged token is refused.
     assert "expired=1" in client.get("/auth/not-a-real-token").headers["location"]
+    assert "expired=1" in client.post("/auth/not-a-real-token").headers["location"]
 
     page = client.get("/app")
     assert page.status_code == 200
@@ -541,3 +555,188 @@ def test_twilio_verification_fails_closed_without_a_token(env):
     pid = _setup(env)
     _, _, client = _web(env, SUNDAY_TWILIO_VERIFY_SIGNATURES=True)  # on, but no token configured
     assert client.post(f"/twilio/voice/{pid}", data={"CallSid": "CA1"}).status_code == 403
+
+
+# --------------------------------------------------------------- onboarding and recordings
+
+
+START = {
+    "your_name": "Daniyal",
+    "relation": "son",
+    "your_phone": "+1 555 010 0001",
+    "parent_name": "Fatima Zaidi",
+    "call_me": "Amma",
+    "parent_phone": "+92 300 1234567",
+    "language": "ur",
+    "call_time": "08:30",
+    "timezone": "Asia/Karachi",
+    "medications": "blood pressure tablet, eye drops",
+    "about": "Grandchildren are Ayaan (7) and Zara (4).\nNeighbour Farida visits on Wednesdays.",
+    "confirm": "yes",
+}
+
+
+def test_self_serve_onboarding_creates_the_household_and_gates_daily_calls(env):
+    from sunday.scheduler import due_parents
+
+    svc, messenger, client = _web(env)
+    assert client.get("/start").status_code == 200
+    assert "Start with your parent" in client.get("/").text
+
+    # Validation: missing confirmation and a number without a country code.
+    bad = dict(START, confirm="", parent_phone="0300 1234567")
+    r = client.post("/start", data=bad)
+    assert r.status_code == 200 and "country code" in r.text and "confirm" in r.text
+    assert svc.repo.list_parents() == [] and messenger.sent == []
+
+    r = client.post("/start", data=START)
+    assert r.status_code == 200 and "Check your phone, Daniyal" in r.text
+    (p,) = svc.repo.list_parents()
+    assert p.name == "Fatima Zaidi" and p.preferred_name == "Amma" and p.phone == "+923001234567"
+    assert (p.language, p.call_time, p.timezone) == ("ur", "08:30", "Asia/Karachi")
+    assert p.introduced_by == "your son Daniyal"
+    assert [m["name"] for m in p.medications] == ["blood pressure tablet", "eye drops"]
+    assert len(svc.repo.memories_for(p.id)) == 2
+    (member,) = svc.repo.family_for(p.id)
+    assert member.name == "Daniyal" and member.phone == "+15550100001" and member.is_primary
+    assert member.channel == "console"  # no Twilio on this copy
+    # The sign-in link went to the new member.
+    assert messenger.sent[-1][0] == "Daniyal" and "/auth/" in messenger.sent[-1][1]
+
+    # No daily call until the introductory call has happened, whatever the clock says.
+    assert p.intro_done is False
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    at = datetime(2026, 11, 2, 8, 31, tzinfo=ZoneInfo("Asia/Karachi"))
+    assert due_parents(svc.repo, now=at) == []
+
+    # Sign in and see the introductory-call card.
+    _sign_in(client, messenger, "+1 555 010 0001")
+    page = client.get("/app").text
+    assert "First, the introductory call" in page and "Call Amma now" in page
+    r = client.post(f"/app/{p.id}/call")
+    assert r.status_code == 200 and "Calling isn" in r.text  # no phone line on this copy
+
+    # The introductory call happens (simulator stands in for the phone); daily calls unlock.
+    run(env, ["simulate", p.id], input="theek hoon beta\nbye now\n")
+    p = svc.repo.get_parent(p.id)
+    assert p.intro_done is True
+    assert [x.id for x in due_parents(svc.repo, now=at)] == [p.id]
+    assert "First, the introductory call" not in client.get("/app").text
+
+    # Submitting again with the same number does not create a second household.
+    r = client.post("/start", data=START)
+    assert "already set up" in r.text and len(svc.repo.list_parents()) == 1
+
+
+def test_call_now_dials_when_twilio_is_configured(env):
+    pid = _setup(env)
+    svc, messenger, client = _web(
+        env,
+        TWILIO_ACCOUNT_SID="ACtest",
+        TWILIO_AUTH_TOKEN="shhh-test-token",
+        TWILIO_FROM_NUMBER="+15550000000",
+    )
+    _sign_in(client, messenger, "+1 555 0001")
+    r = client.post(f"/app/{pid}/call")
+    assert r.status_code == 200 and "Ringing Amma" in r.text
+    assert len(svc.telephony.placed) == 1 and svc.telephony.placed[0]["to"] == "+923001234567"
+    # A second tap while the first is still ringing does not dial again.
+    r = client.post(f"/app/{pid}/call")
+    assert "Already on a call" in r.text and len(svc.telephony.placed) == 1
+
+
+def test_recording_only_with_consent_and_only_for_the_family(env):
+    pid = _setup(env)
+    svc, messenger, client = _web(
+        env,
+        TWILIO_ACCOUNT_SID="ACtest",
+        TWILIO_AUTH_TOKEN="shhh-test-token",
+        TWILIO_FROM_NUMBER="+15550000000",
+    )
+    _sign_in(client, messenger, "+1 555 0001")
+
+    # Without consent: the answered-call webhook starts no recording and the opening line
+    # says nothing about recording.
+    r = client.post(f"/twilio/voice/{pid}", data={"CallSid": "CA1"})
+    assert r.status_code == 200 and svc.telephony.recordings == []
+    assert "recorded" not in r.text
+
+    # The family records Amma's consent on the settings card.
+    client.post(f"/app/{pid}/consent", data={"recording": "yes"})
+    assert svc.repo.get_parent(pid).consent_recording is True
+
+    r = client.post(f"/twilio/voice/{pid}", data={"CallSid": "CA2"})
+    assert "This call is recorded for the family, as you agreed." in r.text
+    assert len(svc.telephony.recordings) == 1
+    assert svc.telephony.recordings[0]["call"] == "CA2"
+    call_id = svc.telephony.recordings[0]["status_url"].rsplit("/", 1)[1]
+    assert svc.repo.get_call(call_id).recording_sid == "REfake0001"
+
+    # Twilio reports the recording finished.
+    r = client.post(
+        f"/twilio/recording/{call_id}",
+        data={
+            "RecordingSid": "REfake0001",
+            "RecordingUrl": "https://api.twilio.com/rec/REfake0001",
+            "RecordingDuration": "412",
+            "RecordingStatus": "completed",
+        },
+    )
+    assert r.status_code == 200
+    call = svc.repo.get_call(call_id)
+    assert call.recording_url.endswith("REfake0001") and call.recording_seconds == 412
+
+    # The family listens through our route; the page shows a player.
+    page = client.get(f"/app/{pid}/calls/{call_id}").text
+    assert "<audio" in page and "6 min 52 s" in page and "consent" in page
+    r = client.get(f"/app/{pid}/calls/{call_id}/recording.mp3")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("audio/mpeg")
+    assert r.content.startswith(b"ID3fake-mp3-bytes:")
+    assert "no-store" in r.headers["cache-control"]
+
+    # Anonymous: redirected to login. Another family: 404.
+    anon = TestClient(create_app(svc), base_url="https://testserver", follow_redirects=False)
+    assert anon.get(f"/app/{pid}/calls/{call_id}/recording.mp3").status_code == 303
+    other = svc.repo.add_parent(name="Other", phone="+15557770000")
+    assert client.get(f"/app/{other.id}/calls/{call_id}/recording.mp3").status_code == 404
+
+    # Consent withdrawn: a late recording callback is ignored and nothing new is recorded.
+    client.post(f"/app/{pid}/consent", data={"recording": ""})
+    c3 = client.post(f"/twilio/voice/{pid}", data={"CallSid": "CA3"})
+    assert "recorded" not in c3.text and len(svc.telephony.recordings) == 1
+
+
+def test_invite_sibling_and_edit_medications(env):
+    pid = _setup(env)
+    svc, messenger, client = _web(env)
+    _sign_in(client, messenger, "+1 555 0001")
+
+    r = client.post(
+        f"/app/{pid}/members",
+        data={
+            "name": "Jamal",
+            "relation": "son",
+            "phone": "+44 7700 900003",
+            "min_alert_tier": "today",
+        },
+    )
+    assert r.status_code == 303
+    jamal = next(m for m in svc.repo.family_for(pid) if m.name == "Jamal")
+    assert jamal.phone == "+447700900003" and jamal.min_alert_tier == "today"
+    assert messenger.sent[-1][0] == "Jamal" and "/auth/" in messenger.sent[-1][1]
+    # Same number again is not added twice.
+    client.post(f"/app/{pid}/members", data={"name": "J", "phone": "+447700900003"})
+    assert sum(1 for m in svc.repo.family_for(pid) if "447700900003" in m.phone) == 1
+    # Jamal can sign in with that number and sees Amma.
+    jamal_client = TestClient(
+        create_app(svc), base_url="https://testserver", follow_redirects=False
+    )
+    _sign_in(jamal_client, messenger, "+447700900003")
+    assert "Signed in as Jamal" in jamal_client.get("/app").text
+
+    client.post(f"/app/{pid}/medications", data={"add": "eye drops", "when": "night"})
+    client.post(f"/app/{pid}/medications", data={"remove": "blood pressure tablet"})
+    assert svc.repo.get_parent(pid).medications == [{"name": "eye drops", "when": "night"}]
+    assert "eye drops" in client.get("/app").text

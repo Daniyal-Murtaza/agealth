@@ -248,12 +248,25 @@ def test_dial_and_no_answer_escalation(world):
     assert tel.placed[0]["voice_url"] == f"https://x.test/twilio/voice/{parent.id}"
     assert repo.get_call(c1).provider_call_id == "CAfake0001"
 
+    from datetime import UTC, datetime, timedelta
+
     assert record_outcome(repo, c1, "no-answer") is None  # first miss: no alert
+    # The same morning's retry is still one day of silence, not two.
+    retry = dial(repo, tel, settings, parent)
+    assert record_outcome(repo, retry, "no-answer") is None
+    assert repo.consecutive_no_answers(parent.id) == 1
+    # Push today's attempts back a day; a second missed day raises 'today'.
+    for cid in (c1, retry):
+        repo.update_call(cid, scheduled_for=datetime.now(UTC) - timedelta(days=1))
     c2 = dial(repo, tel, settings, parent)
     a2 = record_outcome(repo, c2, "busy")
     assert a2 is not None and repo.get_call(c2).status == "no_answer"
     alerts = repo.unnotified_alerts(parent.id)
     assert alerts[-1].tier == "today" and alerts[-1].kind == "no_answer"
+    # Third missed day -> 'now'.
+    for cid in (c1, retry):
+        repo.update_call(cid, scheduled_for=datetime.now(UTC) - timedelta(days=2))
+    repo.update_call(c2, scheduled_for=datetime.now(UTC) - timedelta(days=1))
     c3 = dial(repo, tel, settings, parent)
     record_outcome(repo, c3, "no-answer")
     assert repo.unnotified_alerts(parent.id)[-1].tier == "now"

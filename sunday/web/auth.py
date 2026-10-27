@@ -107,6 +107,17 @@ class Auth:
     def make_login_token(self, phone: str) -> str:
         return self._links.dumps({"p": digits_only(phone)})
 
+    def peek_login_token(self, token: str) -> bool:
+        """Valid, unexpired and unused, without consuming it."""
+        self._prune_used()
+        if token in self._used:
+            return False
+        try:
+            data = self._links.loads(token, max_age=self.login_link_s)
+        except (SignatureExpired, BadSignature):
+            return False
+        return bool(self.members_for_phone(str(data.get("p", ""))))
+
     def redeem_login_token(self, token: str) -> str | None:
         """Phone digits if the token is valid, unexpired and unused; else None."""
         self._prune_used()

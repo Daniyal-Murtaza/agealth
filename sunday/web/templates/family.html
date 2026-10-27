@@ -21,10 +21,18 @@
       Next call {{ next_call }} ({{ parent.timezone }}).
     </p>
   </div>
-  <div class="right small faint">Signed in as {{ me.name }} ({{ me.relation or 'family' }}). You get: <b>{{ {'info':'everything','today':'check-today and urgent','now':'urgent only'}[me.min_alert_tier] }}</b>.</div>
+  <div class="right small faint">Signed in as {{ me.name }} ({{ me.relation or 'family' }}). You get: <b>{{ {'info':'everything','today':'check-today and urgent','now':'urgent only'}[me.min_alert_tier] }}</b>.
+    {% if parent.intro_done %}<form method="post" action="/app/{{ parent.id }}/call" class="inline-form" style="margin-left:.5rem"><button class="btn quiet" type="submit">Call {{ parent.address() }} now</button></form>{% endif %}</div>
 </div>
 
-{% if not open_alerts and latest %}
+{% if not parent.intro_done %}
+<div class="card" style="border-color:var(--accent);margin-bottom:1.25rem">
+  <h2>First, the introductory call</h2>
+  <p class="muted">Sit with {{ parent.address() }}, or ring them first, then tap the button. Sunday will introduce itself as the assistant sent by {{ parent.introduced_by or 'the family' }}; you tell them who it is and that it will call each morning at {{ parent.call_time }}. Daily calls begin the next day.</p>
+  <form method="post" action="/app/{{ parent.id }}/call" class="inline-form"><button class="btn" type="submit">Call {{ parent.address() }} now</button></form>
+  {% if not twilio_ready %}<span class="small faint" style="margin-left:.75rem">No phone line configured on this copy; use <code>sunday simulate {{ parent.id }}</code>.</span>{% endif %}
+</div>
+{% elif not open_alerts and latest %}
 <p class="allgood small" id="alerts">Nothing needs your attention right now.</p>
 {% endif %}
 {% if open_alerts %}
@@ -177,6 +185,27 @@
         <div class="field"><label>Sunday calls them</label><input name="preferred_name" type="text" value="{{ parent.preferred_name }}" maxlength="40"></div>
         <button class="btn sm" type="submit">Save</button>
       </form>
+      <h3 class="mt">Medications Sunday asks about</h3>
+      <ul class="list small">
+        {% for m in parent.medications or [] %}
+        <li><div>{{ m.name }} <span class="faint">{{ m.when }}</span></div>
+          <form method="post" action="/app/{{ parent.id }}/medications"><input type="hidden" name="remove" value="{{ m.name }}"><button class="btn quiet" type="submit" title="Remove">&times;</button></form></li>
+        {% else %}<li class="faint">None yet.</li>{% endfor %}
+      </ul>
+      <form method="post" action="/app/{{ parent.id }}/medications" class="row" style="gap:.5rem">
+        <div class="field"><input name="add" type="text" placeholder="blood pressure tablet" maxlength="60" required></div>
+        <div class="field" style="flex:0 0 7.5rem"><select name="when"><option>morning</option><option>midday</option><option>evening</option><option>night</option></select></div>
+        <div class="field" style="flex:0 0 auto"><button class="btn quiet" type="submit">Add</button></div>
+      </form>
+
+      <h3 class="mt">Recording</h3>
+      <form method="post" action="/app/{{ parent.id }}/consent">
+        <label style="display:flex;gap:.6rem;align-items:flex-start;color:var(--ink)" class="small">
+          <input type="checkbox" name="recording" value="yes" {{ 'checked' if parent.consent_recording }} onchange="this.form.submit()" style="width:auto;margin-top:.25rem">
+          <span>{{ parent.address() }} has agreed that calls may be recorded for the family to listen to. Sunday says "this call is recorded for the family, as you agreed" at the start of every recorded call.</span></label>
+        <noscript><button class="btn quiet" type="submit">Save</button></noscript>
+      </form>
+
       <h3 class="mt">Who hears what</h3>
       <ul class="list small">
         {% for m in members %}
@@ -193,6 +222,20 @@
         </li>
         {% endfor %}
       </ul>
+      <details class="small mt"><summary>Invite a sibling</summary>
+        <form method="post" action="/app/{{ parent.id }}/members" class="mt">
+          <div class="row">
+            <div class="field"><input name="name" type="text" placeholder="Name" maxlength="60" required></div>
+            <div class="field"><input name="relation" type="text" placeholder="daughter" maxlength="30"></div>
+          </div>
+          <div class="field"><input name="phone" type="tel" placeholder="+44 7700 900 003" required></div>
+          <div class="row">
+            <div class="field"><select name="min_alert_tier"><option value="info">everything</option><option value="today">check-today + urgent</option><option value="now">urgent only</option></select></div>
+            <div class="field" style="flex:0 0 auto"><button class="btn sm" type="submit">Invite</button></div>
+          </div>
+          <div class="tiny faint">They get a sign-in link on that number and the notes at the level you choose.</div>
+        </form>
+      </details>
       <p class="small mt mb0"><a href="/app/{{ parent.id }}/export.json">Export everything</a> <span class="faint">transcripts, notes, alerts, as JSON. It's yours.</span></p>
     </div>
 

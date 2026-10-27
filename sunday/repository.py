@@ -212,22 +212,54 @@ class Repository:
             return c
 
     def consecutive_no_answers(self, parent_id: str) -> int:
-        """How many of the most recent call attempts in a row went unanswered."""
+        """How many *days* in a row, counting back from the latest attempt, had at least one
+        unanswered call and no answered one. Two rings on the same morning are one day."""
+        parent = self.get_parent(parent_id)
         with self.session() as s:
             q = (
                 select(Call)
                 .where(Call.parent_id == parent_id)
                 .where(Call.status.in_(["completed", "no_answer", "failed"]))
-                .order_by(Call.scheduled_for.desc(), Call.started_at.desc())
-                .limit(10)
+                .order_by(
+                    func.coalesce(Call.started_at, Call.scheduled_for).desc(),
+                )
+                .limit(40)
             )
-            n = 0
-            for c in s.scalars(q):
-                if c.status == "no_answer":
-                    n += 1
-                else:
-                    break
-            return n
+            calls = list(s.scalars(q))
+        days: dict = {}
+        order: list = []
+        for c in calls:
+            when = c.started_at or c.scheduled_for
+            if when is None:
+                continue
+            d = (parent.local_now(when) if parent else when).date()
+            if d not in days:
+                days[d] = set()
+                order.append(d)
+            days[d].add(c.status)
+        n = 0
+        for d in order:
+            if "completed" in days[d] or "no_answer" not in days[d]:
+                break
+            n += 1
+        return n
+
+    def call_by_recording_sid(self, recording_sid: str) -> Call | None:
+        if not recording_sid:
+            return None
+        with self.session() as s:
+            q = select(Call).where(Call.recording_sid == recording_sid).limit(1)
+            return s.scalars(q).first()
+
+    def call_by_provider_id(self, provider_call_id: str) -> Call | None:
+        if not provider_call_id:
+            return None
+        with self.session() as s:
+            q = select(Call).where(Call.provider_call_id == provider_call_id).limit(1)
+            c = s.scalars(q).first()
+            if c is not None:
+                _ = c.turns, c.observations, c.alerts
+            return c
 
     # --- observations, alerts, memories -------------------------------------
 
@@ -318,7 +350,16 @@ class Repository:
     def add_memory(
         self, parent_id: str, text: str, *, topic: str = "", source: str = "", evidence: str = ""
     ) -> Memory:
+        """Remember something. The same fact heard again (ignoring case, spacing and a
+        trailing full stop) is not stored twice; the model restates "the grandchildren are
+        Ayaan and Zara" most weeks."""
+        key = " ".join(text.lower().split()).rstrip(".")
         with self.session() as s:
+            for m in s.scalars(
+                select(Memory).where(Memory.parent_id == parent_id, Memory.active.is_(True))
+            ):
+                if " ".join(m.text.lower().split()).rstrip(".") == key:
+                    return m
             m = Memory(
                 parent_id=parent_id, text=text, topic=topic, source=source, evidence=evidence
             )

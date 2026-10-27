@@ -333,7 +333,8 @@ def test_services_send_urgent_alert_while_the_call_is_still_going(world):
     from sunday.app import Services
     from sunday.calls.dialer import FakeTelephony
 
-    repo, parent, settings = world
+    repo, parent, _ = world
+    settings = Settings(_env_file=None, SUNDAY_PROVIDER="fake", SUNDAY_PUBLIC_URL="https://x.test")
     messenger = ConsoleMessenger(echo=False)
     svc = Services(
         settings=settings,
@@ -358,6 +359,8 @@ def test_services_send_urgent_alert_while_the_call_is_still_going(world):
     svc.complete(session)
     urgent = [t for _, t in messenger.sent if t.startswith("URGENT")]
     assert len(urgent) == 2  # finish_call did not send the same alert again
+    note = [t for _, t in messenger.sent if t.startswith("Sunday called")][0]
+    assert f"Read the call: https://x.test/app/{parent.id}/calls/{session.call.id}" in note
 
 
 def test_digest_leads_with_alerts(world):
@@ -422,3 +425,46 @@ def test_inbound_call_note_says_who_called(world):
 
     text = format_summary(parent, call, CallAnalysis(summary="Wanted a chat.", mood="ok"))
     assert text.startswith("Amma called Sunday - ")
+
+
+def test_one_retry_then_leave_them_alone_for_the_day(world):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
+    from sunday.calls.dialer import record_outcome
+    from sunday.scheduler import is_due
+
+    repo, parent, _ = world
+    repo.update_parent(parent.id, timezone="Asia/Karachi", call_time="09:00")
+    parent = repo.get_parent(parent.id)
+    khi = ZoneInfo("Asia/Karachi")
+    t0 = datetime(2026, 11, 2, 9, 2, tzinfo=khi)
+    assert is_due(parent, repo, now=t0)
+    c1 = repo.create_call(parent.id, status="scheduled", scheduled_for=t0.astimezone(UTC))
+    assert not is_due(parent, repo, now=t0 + timedelta(minutes=5))  # still ringing
+    record_outcome(repo, c1.id, "no-answer")
+    # Not straight away, one retry after fifteen minutes, then nothing more today.
+    assert not is_due(parent, repo, now=t0 + timedelta(minutes=5))
+    assert not is_due(parent, repo, now=t0 + timedelta(minutes=14))
+    assert is_due(parent, repo, now=t0 + timedelta(minutes=16))
+    c2 = repo.create_call(
+        parent.id, status="scheduled", scheduled_for=(t0 + timedelta(minutes=16)).astimezone(UTC)
+    )
+    record_outcome(repo, c2.id, "no-answer")
+    assert not is_due(parent, repo, now=t0 + timedelta(minutes=33))
+    assert not is_due(parent, repo, now=t0 + timedelta(hours=3))
+    assert repo.consecutive_no_answers(parent.id) == 1  # two rings, one day
+    # Answered the next morning: the streak resets and no retry happens.
+    t1 = t0 + timedelta(days=1)
+    assert is_due(parent, repo, now=t1)
+    repo.create_call(parent.id, status="completed", started_at=t1.astimezone(UTC))
+    assert not is_due(parent, repo, now=t1 + timedelta(minutes=16))
+    assert repo.consecutive_no_answers(parent.id) == 0
+
+
+def test_memories_are_not_stored_twice(world):
+    repo, parent, _ = world
+    before = len(repo.memories_for(parent.id))
+    repo.add_memory(parent.id, "Grandchildren are Ayaan (7) and Zara (4).", topic="family")
+    repo.add_memory(parent.id, "grandchildren are  Ayaan (7) and Zara (4)", topic="family")
+    assert len(repo.memories_for(parent.id)) == before + 1

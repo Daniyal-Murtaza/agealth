@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Calling {{ parent.address() }} - Sunday{% endblock %}
+{% block body %}
+<div class="narrow" style="margin: 3rem auto;">
+  <div class="card">
+    {% if placed and busy %}
+      <h1 class="serif" style="font-size:2rem">Already on a call</h1>
+      <p class="muted">Sunday is ringing or talking to {{ parent.address() }} right now. The note will arrive when it ends.</p>
+    {% elif placed %}
+      <h1 class="serif" style="font-size:2rem">Ringing {{ parent.address() }}</h1>
+      <p class="muted">Their phone is ringing now. If this is the first call, stay with them: Sunday will introduce itself, and you can say who it is and why it will call each morning. You'll get the note on your phone when it ends.</p>
+    {% else %}
+      <h1 class="serif" style="font-size:2rem">Calling isn't connected yet</h1>
+      <p class="muted">This copy of Sunday has no phone line configured (Twilio keys and a public URL). The terminal simulator still works: <code>sunday simulate {{ parent.id }}</code>.</p>
+    {% endif %}
+    <p class="mb0"><a class="btn ghost" href="/app?parent={{ parent.id }}">Back to {{ parent.address() }}'s page</a></p>
+  </div>
+</div>
+{% endblock %}

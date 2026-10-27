@@ -77,6 +77,10 @@ class Parent(Base):
     notes: Mapped[str] = mapped_column(Text, default="")  # free text from the family
     introduced_by: Mapped[str] = mapped_column(String, default="")  # "your daughter Hira"
     consent_recording: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Daily calls start only after the introductory call, which a family member places
+    # from their page so they can be on hand to introduce Sunday. Operators adding a
+    # parent from the CLI set this True directly.
+    intro_done: Mapped[bool] = mapped_column(Boolean, default=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_digest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -141,6 +145,11 @@ class Call(Base):
     mood: Mapped[str] = mapped_column(String, default="")  # bright | ok | low | unclear
     end_reason: Mapped[str] = mapped_column(String, default="")
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Only ever set when the parent has consented (Parent.consent_recording). The URL is
+    # Twilio's and needs the account credentials; the family listens through our own route.
+    recording_sid: Mapped[str] = mapped_column(String, default="")
+    recording_url: Mapped[str] = mapped_column(String, default="")
+    recording_seconds: Mapped[int] = mapped_column(Integer, default=0)
 
     parent: Mapped[Parent] = relationship(back_populates="calls")
     turns: Mapped[list[Turn]] = relationship(

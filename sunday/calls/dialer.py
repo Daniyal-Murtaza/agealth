@@ -19,6 +19,15 @@ class Telephony(Protocol):
         """Start ringing. Returns the provider call id."""
         ...
 
+    def start_recording(self, provider_call_id: str, *, status_url: str) -> str:
+        """Begin recording a live call (only called when the parent has consented).
+        Returns the provider recording id."""
+        ...
+
+    def recording_bytes(self, recording_url: str) -> bytes:
+        """Fetch a finished recording as MP3 bytes, using the account credentials."""
+        ...
+
 
 class TwilioTelephony:
     def __init__(self, account_sid: str, auth_token: str, from_number: str) -> None:
@@ -40,15 +49,41 @@ class TwilioTelephony:
         )
         return call.sid
 
+    def start_recording(self, provider_call_id: str, *, status_url: str) -> str:
+        rec = self._client.calls(provider_call_id).recordings.create(
+            recording_status_callback=status_url,
+            recording_status_callback_event=["completed"],
+            recording_channels="dual",
+        )
+        return rec.sid
+
+    def recording_bytes(self, recording_url: str) -> bytes:
+        import httpx
+
+        url = recording_url if recording_url.endswith(".mp3") else recording_url + ".mp3"
+        r = httpx.get(url, auth=(self._client.username, self._client.password), timeout=30)
+        r.raise_for_status()
+        return r.content
+
 
 class FakeTelephony:
+    """Records what would have been dialled. ``recordings`` lists started recordings."""
+
     def __init__(self, *, answer: bool = True) -> None:
         self.answer = answer
         self.placed: list[dict] = []
+        self.recordings: list[dict] = []
 
     def place_call(self, to: str, *, voice_url: str, status_url: str) -> str:
         self.placed.append({"to": to, "voice_url": voice_url, "status_url": status_url})
         return f"CAfake{len(self.placed):04d}"
+
+    def start_recording(self, provider_call_id: str, *, status_url: str) -> str:
+        self.recordings.append({"call": provider_call_id, "status_url": status_url})
+        return f"REfake{len(self.recordings):04d}"
+
+    def recording_bytes(self, recording_url: str) -> bytes:
+        return b"ID3fake-mp3-bytes:" + recording_url.encode()
 
 
 def dial(repo: Repository, telephony: Telephony, settings: Settings, parent: Parent) -> str:

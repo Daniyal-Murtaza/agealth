@@ -11,6 +11,14 @@
 
 <div class="grid">
   <div class="col-8 stack">
+    {% if call.recording_url %}
+    <div class="card">
+      <h2>Listen <span class="faint">{{ (call.recording_seconds // 60) }} min {{ call.recording_seconds % 60 }} s · recorded with {{ parent.address() }}'s consent</span></h2>
+      <audio controls preload="none" style="width:100%" src="/app/{{ parent.id }}/calls/{{ call.id }}/recording.mp3">Your browser cannot play audio. <a href="/app/{{ parent.id }}/calls/{{ call.id }}/recording.mp3">Download the recording</a>.</audio>
+    </div>
+    {% elif parent.consent_recording and call.recording_sid %}
+    <p class="small faint">The recording is still being prepared; refresh in a minute.</p>
+    {% endif %}
     <div class="card">
       <h2>The note</h2>
       <p class="mb0" style="font-size:1.08rem">{{ call.summary or 'No note was written for this call.' }}</p>

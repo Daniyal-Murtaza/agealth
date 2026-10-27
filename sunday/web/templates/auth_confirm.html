@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Signing you in - Sunday{% endblock %}
+{% block body %}
+<div class="narrow" style="margin: 3rem auto;">
+  <div class="card">
+    <h1 class="serif" style="font-size:2rem">One tap to continue</h1>
+    <p class="muted">This confirms it's you and not a link preview. The link works once.</p>
+    <form method="post" action="/auth/{{ token }}" id="go">
+      <button class="btn" type="submit">Open my family page</button>
+    </form>
+  </div>
+</div>
+<script>
+  // Submit automatically for people; preview bots do not run scripts.
+  setTimeout(function () { var f = document.getElementById('go'); if (f) f.submit(); }, 400);
+</script>
+{% endblock %}

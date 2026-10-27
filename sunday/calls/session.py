@@ -26,6 +26,7 @@ from enum import StrEnum
 
 from sunday.brain.conversation import (
     INBOUND_PLAN,
+    RECORDING_NOTICE,
     CallContext,
     inbound_opening_line,
     next_line,
@@ -152,6 +153,9 @@ class CallSession:
             if self.direction == "inbound"
             else opening_line(self.ctx)
         )
+        if self.parent.consent_recording:
+            # Said every time, so the parent is never recorded without hearing it.
+            line += " " + RECORDING_NOTICE.get(self.parent.language, RECORDING_NOTICE["en"])
         self._say(line)
         self.ctx.done.add("greeting")
         return SessionEvent(say=line)
