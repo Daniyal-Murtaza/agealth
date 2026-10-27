@@ -76,6 +76,18 @@ _SESSIONS: dict[str, CallSession] = {}
 
 MOOD_LABEL = {"bright": "sounded bright", "ok": "sounded okay", "low": "sounded a bit low"}
 TIER_LABEL = {"now": "Urgent", "today": "Check today", "info": "FYI"}
+MOOD_SCORE = {"low": 1, "unclear": 2, "ok": 2, "bright": 3}
+TOASTS = {
+    "queued": "Added. Sunday will bring it up on the next call.",
+    "removed": "Removed from the queue.",
+    "seen": "Marked as seen. The family can see you've looked.",
+    "remembered": "Sunday will remember that.",
+    "forgotten": "Forgotten.",
+    "saved": "Saved.",
+    "invited": "Invited. They'll get a sign-in link on that number.",
+    "recording_on": "Recording on. Sunday will say so at the start of every call.",
+    "recording_off": "Recording off.",
+}
 
 
 def create_app(services: Services) -> FastAPI:
@@ -282,7 +294,10 @@ def create_app(services: Services) -> FastAPI:
 
     @app.get("/app", response_class=HTMLResponse)
     async def family_home(
-        request: Request, parent: str = "", viewer: Viewer = Depends(current_viewer)
+        request: Request,
+        parent: str = "",
+        done: str = "",
+        viewer: Viewer = Depends(current_viewer),
     ):
         p = parent_for(viewer, parent) if parent else viewer.parent(None)
         if p is None:
@@ -291,6 +306,7 @@ def create_app(services: Services) -> FastAPI:
             request,
             "family.html",
             viewer=viewer,
+            toast=TOASTS.get(done, ""),
             **_family_context(repo, p, viewer, twilio_ready=settings.twilio_ready()),
         )
 
@@ -319,19 +335,19 @@ def create_app(services: Services) -> FastAPI:
                 kind=kind,
                 remind_on=remind_on,
             )
-        return RedirectResponse(f"/app?parent={p.id}#tomorrow", status_code=303)
+        return RedirectResponse(f"/app?parent={p.id}&done=queued#tomorrow", status_code=303)
 
     @app.post("/app/{pid}/messages/{mid}/remove")
     async def remove_message(pid: str, mid: str, viewer: Viewer = Depends(current_viewer)):
         p = parent_for(viewer, pid)
         repo.delete_message(mid, p.id)
-        return RedirectResponse(f"/app?parent={p.id}#tomorrow", status_code=303)
+        return RedirectResponse(f"/app?parent={p.id}&done=removed#tomorrow", status_code=303)
 
     @app.post("/app/{pid}/alerts/{aid}/ack")
     async def ack_alert(pid: str, aid: str, viewer: Viewer = Depends(current_viewer)):
         p = parent_for(viewer, pid)
         repo.acknowledge_alert(aid, p.id, by=viewer.membership_for(p.id).name)
-        return RedirectResponse(f"/app?parent={p.id}#alerts", status_code=303)
+        return RedirectResponse(f"/app?parent={p.id}&done=seen#alerts", status_code=303)
 
     @app.post("/app/{pid}/memories")
     async def add_memory(
@@ -344,13 +360,13 @@ def create_app(services: Services) -> FastAPI:
         text = text.strip()[:300]
         if text:
             repo.add_memory(p.id, text, topic=topic.strip()[:30], source="family")
-        return RedirectResponse(f"/app?parent={p.id}#knows", status_code=303)
+        return RedirectResponse(f"/app?parent={p.id}&done=remembered#knows", status_code=303)
 
     @app.post("/app/{pid}/memories/{mem_id}/remove")
     async def remove_memory(pid: str, mem_id: int, viewer: Viewer = Depends(current_viewer)):
         p = parent_for(viewer, pid)
         repo.deactivate_memory(mem_id, p.id)
-        return RedirectResponse(f"/app?parent={p.id}#knows", status_code=303)
+        return RedirectResponse(f"/app?parent={p.id}&done=forgotten#knows", status_code=303)
 
     @app.post("/app/{pid}/settings")
     async def update_settings(
@@ -377,7 +393,7 @@ def create_app(services: Services) -> FastAPI:
             fields["preferred_name"] = preferred_name.strip()[:40]
         if fields:
             repo.update_parent(p.id, **fields)
-        return RedirectResponse(f"/app?parent={p.id}#settings", status_code=303)
+        return RedirectResponse(f"/app?parent={p.id}&done=saved#settings", status_code=303)
 
     @app.post("/app/{pid}/members/{member_id}")
     async def update_member(
@@ -399,7 +415,7 @@ def create_app(services: Services) -> FastAPI:
             fields["channel"] = channel
         if fields:
             repo.update_family_member(member_id, **fields)
-        return RedirectResponse(f"/app?parent={p.id}#settings", status_code=303)
+        return RedirectResponse(f"/app?parent={p.id}&done=saved#family", status_code=303)
 
     @app.post("/app/{pid}/members")
     async def invite_member(
@@ -427,7 +443,7 @@ def create_app(services: Services) -> FastAPI:
                     else "info",
                 )
                 _send_login(m, digits_only(phone))
-        return RedirectResponse(f"/app?parent={p.id}#settings", status_code=303)
+        return RedirectResponse(f"/app?parent={p.id}&done=invited#family", status_code=303)
 
     @app.post("/app/{pid}/medications")
     async def medications(
@@ -444,7 +460,7 @@ def create_app(services: Services) -> FastAPI:
         if add.strip():
             meds.append({"name": add.strip()[:60], "when": when.strip()[:20] or "morning"})
         repo.update_parent(p.id, medications=meds)
-        return RedirectResponse(f"/app?parent={p.id}#settings", status_code=303)
+        return RedirectResponse(f"/app?parent={p.id}&done=saved#settings", status_code=303)
 
     @app.post("/app/{pid}/consent")
     async def consent(
@@ -454,7 +470,8 @@ def create_app(services: Services) -> FastAPI:
         the start of every recorded call, so the parent hears it each time."""
         p = parent_for(viewer, pid)
         repo.update_parent(p.id, consent_recording=recording == "yes")
-        return RedirectResponse(f"/app?parent={p.id}#settings", status_code=303)
+        done = "recording_on" if recording == "yes" else "recording_off"
+        return RedirectResponse(f"/app?parent={p.id}&done={done}#settings", status_code=303)
 
     @app.post("/app/{pid}/call", response_class=HTMLResponse)
     async def call_now(request: Request, pid: str, viewer: Viewer = Depends(current_viewer)):
@@ -511,6 +528,7 @@ def create_app(services: Services) -> FastAPI:
             viewer=viewer,
             parent=p,
             call=call,
+            turns=_highlighted_turns(call),
             local=lambda dt: p.local_now(dt) if dt else None,
         )
 
@@ -768,6 +786,20 @@ def _family_context(repo, p, viewer: Viewer, *, twilio_ready: bool = False) -> d
     }
     answered_days = sum(1 for s in strip if s["state"] == "answered")
 
+    # This week against last week, in plain numbers.
+    week_ago = today - timedelta(days=7)
+    this_week = [s for s in strip if s["date"] > week_ago]
+    last_week = [s for s in strip if s["date"] <= week_ago]
+    answered_this = sum(1 for s in this_week if s["state"] == "answered")
+    answered_last = sum(1 for s in last_week if s["state"] == "answered")
+    med_this = len({d for d in med_days_taken if d > week_ago})
+    med_last = len({d for d in med_days_taken if d <= week_ago})
+    pain_this = sum(1 for o in obs if o.kind == "pain" and p.local_now(o.at).date() > week_ago)
+    pain_last = sum(1 for o in obs if o.kind == "pain" and p.local_now(o.at).date() <= week_ago)
+    spark = _sparkline(
+        [MOOD_SCORE.get(s["mood"]) if s["state"] == "answered" else None for s in strip]
+    )
+
     alerts = repo.alerts_since(p.id, days=30)
     open_alerts = [a for a in alerts if not a.acknowledged_by]
     seen_alerts = [a for a in alerts if a.acknowledged_by][:5]
@@ -788,6 +820,12 @@ def _family_context(repo, p, viewer: Viewer, *, twilio_ready: bool = False) -> d
         "follow_ups": follow_ups,
         "strip": strip,
         "answered_days": answered_days,
+        "compare": {
+            "answered": (answered_this, answered_last),
+            "medication": (med_this, med_last),
+            "pain": (pain_this, pain_last),
+        },
+        "spark": spark,
         "med_taken": len(med_days_taken),
         "med_missed": len(med_days_missed - med_days_taken),
         "open_alerts": open_alerts,
@@ -806,6 +844,88 @@ def _family_context(repo, p, viewer: Viewer, *, twilio_ready: bool = False) -> d
         "twilio_ready": twilio_ready,
         "has_calls": bool(completed),
     }
+
+
+def _sparkline(values: list, width: int = 300, height: int = 44) -> dict:
+    """Points for a tiny mood line: one x per day, y from 1 (low) to 3 (bright); gaps where
+    there was no call. Returns the SVG path strings so the template stays dumb."""
+    n = len(values)
+    if n < 2:
+        return {"line": "", "area": "", "dots": []}
+    step = width / (n - 1)
+    pad = 6
+    pts = []
+    for i, v in enumerate(values):
+        if v is None:
+            pts.append(None)
+            continue
+        y = height - pad - (v - 1) / 2 * (height - 2 * pad)
+        pts.append((round(i * step, 1), round(y, 1)))
+    line, segs, cur = [], [], []
+    for pt in pts:
+        if pt is None:
+            if cur:
+                segs.append(cur)
+            cur = []
+        else:
+            cur.append(pt)
+    if cur:
+        segs.append(cur)
+    for seg in segs:
+        line.append("M" + " L".join(f"{x},{y}" for x, y in seg))
+    first = next((pt for pt in pts if pt), None)
+    last = next((pt for pt in reversed(pts) if pt), None)
+    area = ""
+    if first and last and len(segs) == 1:
+        area = line[0] + f" L{last[0]},{height} L{first[0]},{height} Z"
+    return {"line": " ".join(line), "area": area, "dots": [pt for pt in pts if pt]}
+
+
+def _highlighted_turns(call) -> list[dict]:
+    """Transcript turns with the words Sunday relied on wrapped in <mark>, each carrying the
+    observation or alert it supports. This is the "nothing invented" rule made visible."""
+    import html as _html
+
+    from markupsafe import Markup
+
+    needles: list[tuple[str, str, str]] = []
+    for a in call.alerts:
+        if a.evidence:
+            needles.append(
+                (a.evidence.strip(), f"{TIER_LABEL.get(a.tier, a.tier)}: {a.text}", "now")
+            )
+    for o in call.observations:
+        if o.evidence:
+            needles.append((o.evidence.strip(), f"{o.kind}: {o.text}", "obs"))
+    out = []
+    for t in call.turns:
+        text = t.text
+        if t.speaker != "parent" or not needles:
+            out.append({"turn": t, "html": Markup(_html.escape(text))})
+            continue
+        spans: list[tuple[int, int, str, str]] = []
+        low = text.lower()
+        for needle, title, kind in needles:
+            n = needle.lower()
+            i = low.find(n)
+            if i < 0 and len(n) > 24:
+                # The model often quotes a fragment; try the first few words.
+                n = " ".join(n.split()[:5])
+                i = low.find(n)
+            if i >= 0 and not any(s <= i < e or i <= s < i + len(n) for s, e, _, _ in spans):
+                spans.append((i, i + len(n), title, kind))
+        spans.sort()
+        pieces, pos = [], 0
+        for s0, e0, title, kind in spans:
+            pieces.append(_html.escape(text[pos:s0]))
+            cls = ' class="now"' if kind == "now" else ""
+            pieces.append(
+                f'<mark{cls} title="{_html.escape(title)}">{_html.escape(text[s0:e0])}</mark>'
+            )
+            pos = e0
+        pieces.append(_html.escape(text[pos:]))
+        out.append({"turn": t, "html": Markup("".join(pieces))})
+    return out
 
 
 def _next_call_text(p, now_local: datetime) -> str:

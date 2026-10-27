@@ -5,19 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Sunday{% endblock %}</title>
   <meta name="description" content="A warm daily phone call for an ageing parent, on the phone they already have. The family gets a short note afterwards; if something is wrong, an alert straight away.">
+  <meta name="theme-color" content="#f7f2ea">
+  <meta property="og:title" content="Sunday - a daily call for your parent">
+  <meta property="og:description" content="Someone calls Amma every morning. You hear how it went. The parent never touches technology.">
+  <meta property="og:type" content="website">
   <link rel="stylesheet" href="/static/sunday.css">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23c4573a'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23c2553a'/%3E%3C/svg%3E">
 </head>
 <body>
 <div class="wrap">
-  <header class="bar">
+  <header class="bar {% if viewer %}lined{% endif %}">
     <a class="brand" href="/"><span class="dot"></span>Sunday</a>
     <nav>
       {% if viewer %}
         <a href="/app">Family page</a>
         <form class="inline-form" method="post" action="/logout"><button class="btn quiet" type="submit">Sign out</button></form>
       {% else %}
-        <a href="/#how">How it works</a>
+        <a class="hide-sm" href="/#how">How it works</a>
         <a href="/login">Family sign in</a>
         <a class="btn sm" href="/start">Start with your parent</a>
       {% endif %}
@@ -29,5 +33,6 @@
     <span>The family owns every word: export or delete at any time.</span>
   </footer>
 </div>
+{% if toast %}<div class="toast" role="status"><span class="tick">✓</span>{{ toast }}</div>{% endif %}
 </body>
 </html>

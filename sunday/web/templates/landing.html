@@ -3,10 +3,11 @@
 {% block body %}
 <section class="hero">
   <div>
+    <div class="eyebrow">A daily call for an ageing parent</div>
     <h1>Someone calls Amma every morning.<br>You hear how it went.</h1>
-    <p class="lede">Sunday is a warm daily phone call for an ageing parent, on the phone they already have. Afterwards the family gets a two-line note on WhatsApp. If something is wrong, an alert straight away. The parent never touches technology.</p>
-    <p><a class="btn" href="/start">Start with your parent</a> &nbsp; {% if demo_login %}<a class="btn ghost" href="/demo">See a family's page</a>{% else %}<a class="btn ghost" href="#how">How it works</a>{% endif %}</p>
-    <p class="small faint">English, Urdu, Hindi and Punjabi. Introduces itself as the assistant sent by the family, every time.</p>
+    <p class="lede">Sunday is a warm daily phone call, on the phone they already have. Afterwards the family gets a two-line note on WhatsApp. If something is wrong, an alert straight away. The parent never touches technology.</p>
+    <p><a class="btn lg" href="/start">Start with your parent</a> &nbsp; {% if demo_login %}<a class="btn ghost lg" href="/demo">See a family's page</a>{% else %}<a class="btn ghost lg" href="#how">How it works</a>{% endif %}</p>
+    <p class="small faint">English, Urdu, Hindi and Punjabi. Introduces itself as the assistant sent by the family, every single time.</p>
   </div>
   <div class="phone" aria-label="Example of the note a family receives">
     <div class="meta">WhatsApp · 9:07</div>
@@ -28,30 +29,47 @@ Sunday is staying on the line with them. Please call them or go now.</div>
 
 <section class="three">
   <div class="card">
-    <h3>For the parent: a phone that rings</h3>
+    <h3><span class="icon-dot">☏</span>For the parent: a phone that rings</h3>
     <p class="mb0 muted">At the time they chose, in their language, in the same warm voice. Sleep, meals, medication, then whatever they want to talk about. It remembers yesterday: "did the plumber come?" They can ring it too, any time, on a number saved as "Sunday".</p>
   </div>
   <div class="card">
-    <h3>For the family: a quiet page</h3>
+    <h3><span class="icon-dot">✉</span>For the family: a quiet page</h3>
     <p class="mb0 muted">A short note after each call, alerts when it matters, and a place to leave what you'd like asked tomorrow. "Remind Baba about the clinic." "Ask if she wants us on Sunday." Siblings stop coordinating by group chat.</p>
   </div>
   <div class="card">
-    <h3>Safe by code, not by prompt</h3>
+    <h3><span class="icon-dot">✓</span>Safe by code, not by prompt</h3>
     <p class="mb0 muted">"I fell", "chest pain", "can't breathe" are caught before any AI runs. The call stays on the line, keeps them calm, and every family member is alerted before the next sentence is spoken. Nothing is ever invented: every note quotes their own words.</p>
   </div>
 </section>
 
 <hr class="rule" id="how">
-<h2>How it works</h2>
-<ol class="steps">
-  <li><b>You introduce Sunday</b><span class="muted">Add your parent, their language and call time, and who in the family gets which alerts. Join the first call to introduce it.</span></li>
-  <li><b>The phone rings</b><span class="muted">"Hello Amma, it's Sunday, the daily call from your son Daniyal. How are you today?" Five to twelve minutes, one question at a time.</span></li>
-  <li><b>You get the note</b><span class="muted">Mood, medication, anything mentioned, anything worth a look. Replies to what you asked. On WhatsApp or SMS.</span></li>
-  <li><b>Patterns over weeks</b><span class="muted">Every Sunday evening: how the week went, what to follow up on, what to talk about on your own call. Plain language, never a diagnosis.</span></li>
-</ol>
+<div class="grid">
+  <div class="col-5">
+    <div class="eyebrow">What a call sounds like</div>
+    <h2 style="font-size:1.9rem">Short turns. One question at a time. Her name now and then, not every sentence.</h2>
+    <p class="muted">Sunday follows a loose plan (how are you, sleep, medication, meals, anything the family left, then open talk) and never asks twice for something she already said. Highlighted words are what the note to the family was built from.</p>
+  </div>
+  <div class="col-7 convo">
+    <ul class="turns">
+      <li class="sunday"><span class="who">Sunday</span><span class="text">Hello Amma, it's Sunday calling, the daily call from your son Daniyal. How are you today?</span></li>
+      <li class="parent"><span class="who">Amma</span><span class="text">I'm alright beta, <mark title="sleep: slept a bit late">slept a bit late</mark> but <mark title="medication: taken">took my tablet with my chai</mark>.</span></li>
+      <li class="sunday"><span class="who">Sunday</span><span class="text">I'm glad you took your tablet. Hira asked me to tell you she'll call on Thursday after work. And Daniyal wants to know: do you want a lift to the clinic on Tuesday?</span></li>
+      <li class="parent"><span class="who">Amma</span><span class="text"><mark title="reply to Daniyal: yes, after eleven">Yes, I'll take the lift, after eleven though</mark>. Farida brought halwa yesterday.</span></li>
+      <li class="sunday"><span class="who">Sunday</span><span class="text">After eleven on Tuesday, I'll tell him. Did you enjoy the halwa?</span></li>
+      <li class="parent"><span class="who">Amma</span><span class="text">Very much. <mark title="household, follow up tomorrow: plumber not come">The plumber still hasn't come, third day now</mark>.</span></li>
+      <li class="sunday"><span class="who">Sunday</span><span class="text">That's frustrating. I'll ask you tomorrow whether he turned up. How are Ayaan and Zara?</span></li>
+    </ul>
+  </div>
+</div>
 
 <hr class="rule">
-<p class="quote">"By 2030 one in five Americans will be over 65, and 53 million family members are already doing this work unpaid. Almost nothing is built for the parent. Sunday is built for the phone they already answer."</p>
+<h2>How it works</h2>
+<ol class="steps">
+  <li><b>You introduce Sunday</b><span class="muted">Add your parent, their language and call time, and who in the family gets which alerts. Place the first call from your page while you're with them.</span></li>
+  <li><b>The phone rings</b><span class="muted">"Hello Amma, it's Sunday, the daily call from your son Daniyal. How are you today?" Five to twelve minutes, one question at a time.</span></li>
+  <li><b>You get the note</b><span class="muted">Mood, medication, anything mentioned, anything worth a look. Replies to what you asked. On WhatsApp or SMS, with a link to read the call.</span></li>
+  <li><b>Patterns over weeks</b><span class="muted">Every Sunday evening: how the week went, what to follow up on, what to talk about on your own call. Plain language, never a diagnosis.</span></li>
+</ol>
 
 <hr class="rule">
 <div class="grid">
@@ -63,7 +81,29 @@ Sunday is staying on the line with them. Please call them or go now.</div>
   </div>
   <div class="col-6">
     <h3>Trust, visible</h3>
-    <p class="muted">Always says it is an assistant sent by the family. Never gives medical advice. Never asks for money, card numbers or codes, and tells the parent so, which also trains them to hang up on real scammers. Recording only with the parent's consent. Everything exportable and deletable by the family.</p>
+    <p class="muted">Always says it is an assistant sent by the family. Never gives medical advice. Never asks for money, card numbers or codes, and tells the parent so, which also trains them to hang up on real scammers. Recording only with the parent's consent, announced on every recorded call. Everything exportable and deletable by the family.</p>
   </div>
+</div>
+
+<hr class="rule">
+<p class="quote">"By 2030 one in five Americans will be over 65, and 53 million family members are already doing this work unpaid. Almost nothing is built for the parent. Sunday is built for the phone they already answer."</p>
+
+<hr class="rule">
+<h2>Questions families ask</h2>
+<div class="faq">
+  <details><summary>Will my mother know it's not a person?</summary><p>Yes, always. The first words of every call are "it's Sunday, the daily call from your son". If she asks, it says it is an assistant. It never pretends otherwise.</p></details>
+  <details><summary>What if she doesn't answer?</summary><p>Sunday tries once more fifteen minutes later, then leaves her alone for the day. Two mornings in a row with no answer and you get a "worth a call" note; three and the whole family gets an urgent alert.</p></details>
+  <details><summary>What happens if she says she has fallen?</summary><p>Before the AI is even consulted, every family member gets an urgent message quoting her words. Sunday stays on the line, tells her help is being called, and gives the local emergency number. It does not hang up.</p></details>
+  <details><summary>Does it give medical advice?</summary><p>Never. It shows concern, asks how she is managing, and tells the family. The doctor is the right person to ask, and Sunday says so.</p></details>
+  <details><summary>Who can see the notes?</summary><p>Only the family members you add, each at the level they choose: everything, check-today and urgent, or urgent only. Sign-in is a one-time link to their own phone. You can export or delete everything at any time.</p></details>
+  <details><summary>Which languages?</summary><p>English, Urdu, Hindi and Punjabi today, including the emergency phrases in each. The family's notes are in English.</p></details>
+</div>
+
+<div class="cta">
+  <div>
+    <h2>Start with your parent</h2>
+    <p>Five minutes to set up. You place the first call yourself, with you on hand to introduce Sunday.</p>
+  </div>
+  <a class="btn lg" href="/start">Get started</a>
 </div>
 {% endblock %}
