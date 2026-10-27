@@ -62,11 +62,15 @@ class OfflineChat:
             if item == "close":
                 break
             if item == "family_messages":
-                if "- From" not in queued:
+                if "] From " not in queued:
                     continue
-                m = re.search(r"- From (\w+): (?:Tell them|Ask them|Remind them): (.+)", queued)
+                m = re.search(
+                    r"- \[(msg_[0-9a-f]+)\] From (\w+): (?:Tell them|ASK them and wait for their "
+                    r"answer|Remind them): (.+)",
+                    queued,
+                )
                 if m:
-                    return f"{ack} {m.group(1)} asked me to tell you: {m.group(2).strip()}"
+                    return f"{ack} {m.group(2)} asked me to tell you: {m.group(3).strip()}"
             if item == "follow_ups" and "- none" in _between(
                 system, "Things to follow up", "Messages"
             ):
@@ -91,7 +95,9 @@ class OfflineChat:
                     covered.append(item)
             if "asked me to tell you" in said:
                 covered.append("family_messages")
-        delivered = re.findall(r"- (msg_[0-9a-f]+):", user) if "family_messages" in covered else []
+        delivered = (
+            re.findall(r"- (msg_[0-9a-f]+) \(", user) if "family_messages" in covered else []
+        )
         parent_said = " ".join(
             ln for ln in exchange.splitlines() if ln.startswith("parent:")
         ).lower()

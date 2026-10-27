@@ -26,6 +26,43 @@ from sunday.models import Parent
 
 log = get_logger("brain.analysis")
 
+NOT_ALERT_KINDS = frozenset(
+    {
+        "household",
+        "plan",
+        "chore",
+        "delivery",
+        "repair",
+        "plumber",
+        "visitor",
+        "social",
+        "story",
+        "weather",
+        "other",
+    }
+)
+_HOUSEHOLD = (
+    "plumber",
+    "electrician",
+    "delivery",
+    "parcel",
+    "gardener",
+    "cleaner",
+    "repair",
+    "shelf",
+    "bill",
+    "post",
+    "shopping",
+    "groceries",
+)
+
+
+def _looks_household(text: str) -> bool:
+    low = text.lower()
+    return any(w in low for w in _HOUSEHOLD) and not any(
+        w in low for w in ("no water", "no heating", "no electricity", "locked out", "gas")
+    )
+
 
 class ObservationOut(BaseModel):
     kind: Literal[
@@ -84,9 +121,12 @@ older person, and write notes for their family. Rules:
 - Every observation, alert and memory must quote the parent's exact words in `evidence`.
   If they did not say it, do not write it.
 - Medication: record taken / missed / unclear for each medication asked about.
-- Alerts: `now` only for emergencies (fall, chest pain, breathing, bleeding, scam in progress).
-  `today` for pain, illness, confusion, low mood, missed medication, scam attempt, no food.
-  `info` for small things worth a mention. No alert for ordinary days.
+- Alerts are for the person's wellbeing and safety ONLY. `now` for emergencies (fall, chest
+  pain, breathing, bleeding, scam in progress). `today` for significant pain, illness,
+  confusion, low mood, missed medication, scam attempt, no food, or a safety problem at home
+  (no heating, no water, locked out). Household chores, deliveries and tradespeople are
+  observations with follow_up=true, NOT alerts. A knee that is "bothering" them a little is an
+  observation; "severe pain" or "couldn't walk" is an alert. No alert for ordinary days.
 - Memories: durable facts worth knowing on future calls (names, routines, preferences, health
   background). Not today's weather.
 - follow_up=true for things tomorrow's call should ask about ("did the plumber come").
@@ -137,6 +177,24 @@ def analyse_call(
     analysis.observations = [o for o in analysis.observations if grounded(o.evidence)]
     analysis.memories = [m for m in analysis.memories if grounded(m.evidence)]
     analysis.alerts = [a for a in analysis.alerts if grounded(a.evidence)]
+
+    # Code guard: alerts are about the person, not the plumbing. Model alerts whose kind is a
+    # household/plan matter become follow-up observations instead of family alerts.
+    kept: list[AlertOut] = []
+    for a in analysis.alerts:
+        if a.tier != "now" and (a.kind in NOT_ALERT_KINDS or _looks_household(a.text)):
+            analysis.observations.append(
+                ObservationOut(
+                    kind="household",
+                    text=a.text.rstrip("."),
+                    value="",
+                    evidence=a.evidence,
+                    follow_up=True,
+                )
+            )
+        else:
+            kept.append(a)
+    analysis.alerts = kept
 
     # Code-detected signals always win and are never downgraded.
     existing = {(a.kind, a.tier) for a in analysis.alerts}

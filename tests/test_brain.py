@@ -332,3 +332,100 @@ def test_complete_json_repairs_once():
     with pytest.raises(ModelError):
         complete_json(ScriptedChat(script=["bad", "bad"]), [], A)
     assert extract_json('```json\n{"n": 1}\n```') == '{"n": 1}'
+
+
+def test_household_alerts_become_follow_ups_not_family_alerts():
+    reply = json.dumps(
+        {
+            "summary": "Fine. Plumber still not here.",
+            "mood": "ok",
+            "alerts": [
+                {
+                    "tier": "today",
+                    "kind": "household",
+                    "text": "Plumber has not come for three days.",
+                    "evidence": "the plumber still hasn't come, third day",
+                },
+                {
+                    "tier": "today",
+                    "kind": "pain",
+                    "text": "Severe knee pain.",
+                    "evidence": "my knee hurts so much",
+                },
+                {
+                    "tier": "today",
+                    "kind": "safety",
+                    "text": "No water in the house.",
+                    "evidence": "there is no water since the plumber",
+                },
+            ],
+        }
+    )
+    transcript = (
+        "parent: the plumber still hasn't come, third day\nparent: my knee hurts so much\n"
+        "parent: there is no water since the plumber"
+    )
+    a = analyse_call(
+        ScriptedChat(script=[reply]), _parent(), transcript, delivered_messages=[], signals=[]
+    )
+    assert [x.kind for x in a.alerts] == ["pain", "safety"]  # plumber demoted, no-water kept
+    follow = [o for o in a.observations if o.follow_up]
+    assert follow and follow[0].kind == "household" and "Plumber" in follow[0].text
+
+
+def test_address_is_not_used_every_sentence():
+    from sunday.brain.conversation import _trim_address
+
+    text = "I'm sorry to hear that, Amma. Did you take your tablet, Amma? Rest well, Amma."
+    once = _trim_address(text, "Amma", recent_sunday_turns=[])
+    assert once.count("Amma") == 1 and once.startswith("I'm sorry to hear that, Amma.")
+    none = _trim_address(text, "Amma", recent_sunday_turns=["Hello Amma", "Good, Amma."])
+    assert none == "I'm sorry to hear that. Did you take your tablet? Rest well."
+    assert _trim_address("Did you sleep well?", "Amma", []) == "Did you sleep well?"
+
+
+def test_ask_messages_are_marked_and_ids_shown():
+    ctx = _ctx()
+    ctx.queued.append(
+        QueuedMessage(
+            id="msg_2",
+            parent_id="par_1",
+            from_name="Daniyal",
+            kind="ask",
+            text="Does she want a lift on Tuesday?",
+        )
+    )
+    p = build_system_prompt(ctx, max_minutes=12, emergency_number="911")
+    assert "[msg_2] From Daniyal: ASK them and wait for their answer: Does she want a lift" in p
+    assert "[msg_1] From Hira: Tell them:" in p
+
+
+def test_open_ask_keeps_family_messages_uncovered_even_when_tired():
+    ctx = _ctx()
+    ctx.queued.append(
+        QueuedMessage(
+            id="msg_2",
+            parent_id="par_1",
+            from_name="Daniyal",
+            kind="ask",
+            text="Does she want a lift on Tuesday?",
+        )
+    )
+    model = ScriptedChat(
+        script=[
+            json.dumps(
+                {
+                    "covered": ["family_messages"],
+                    "delivered_messages": ["msg_1"],
+                    "parent_sounds_tired_or_wants_to_stop": True,
+                }
+            )
+        ]
+    )
+    update_progress(model, ctx, [("parent", "I'm tired")])
+    assert ctx.remaining() == ["family_messages", "close"]
+    assert [m.id for m in ctx.pending_asks()] == ["msg_2"]
+    prompt = build_system_prompt(ctx, max_minutes=12, emergency_number="911")
+    assert "the family is waiting for an answer to: Does she want a lift" in prompt
+    ctx.delivered_message_ids.add("msg_2")
+    assert ctx.pending_asks() == []
