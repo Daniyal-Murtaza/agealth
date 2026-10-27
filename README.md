@@ -7,7 +7,7 @@ Python on Twilio Conversation Relay for speech, OpenAI for the conversation,
 and SQLite for everything that must not be lost.
 
 - **Honest and warm.** Opens with a fixed line that says who it is and who sent it. Short turns, one question at a time, the parent's name only now and then. Remembers yesterday ("did the plumber come?") and passes on messages from the family.
-- **Safe by code, not by prompt.** "I fell", "chest pain", "can't breathe" (English, Urdu, Hindi, Punjabi, Latin or native script) are caught by keyword triggers before any model runs. The call switches to calm scripted lines, stays on the line, and the whole family is alerted at once.
+- **Safe by code, not by prompt.** "I fell", "chest pain", "can't breathe" (English, Urdu, Hindi, Punjabi, Latin or native script) are caught by keyword triggers before any model runs. The whole family is alerted before Sunday says another word; the call switches to calm scripted lines with the right emergency number for the parent's country and stays on the line.
 - **Nothing invented.** Every observation, alert and memory must quote the parent's words; quotes not found in the transcript are dropped. Household chores become follow-ups, never alerts. No medical advice, ever.
 - **Runs with no accounts.** An offline brain, a console messenger and a terminal simulator let you design the conversation before paying for anything.
 - **Degrades politely.** If the model is down the call ends with a kind line and the transcript is kept. Two missed calls raise a note; three raise an alert.
@@ -75,7 +75,8 @@ Things to try in the simulator:
 
 - Answer "I slept a bit late, took my tablet with my chai" and watch Sunday not ask about sleep or medication again.
 - Say "the plumber still hasn't come" and see it land in tomorrow's follow-ups, not as an alert.
-- Say "I fell and I can't get up". The call switches to the emergency script and every family member is alerted before the model is consulted.
+- Say "I fell and I can't get up". Every family member is alerted before Sunday's next line, and the call switches to the emergency script without consulting the model.
+- Say "Haven't eaten yet, I'll make something later" and nothing is raised; say "I haven't eaten since yesterday" and the family gets a "check today" note.
 - Say "I'm tired, let's talk tomorrow" and get a warm close, unless a family "ask" is still unanswered.
 
 Family members with `--alerts now` only hear about emergencies; `today` adds
@@ -119,19 +120,23 @@ Sunday is staying on the line with them. Please call them or go now.
 ## Verify offline
 
 ```bash
-pytest                                   # 57 offline tests, ~1s
+pytest                                   # 66 offline tests, ~1s
 ruff check . && ruff format --check .    # lint / format
 ```
 
 The tests use a scripted model and an in-memory database, so they need no
 keys. They cover: a normal call through the plan to a warm close; a fall that
-switches to emergency mode without the model; a `today` signal that raises an
-alert while the call continues; turn and time budgets; the model failing
-mid-call; the tired-parent shortcut and the open-ask gate; analysis that drops
-unquoted claims and never downgrades a code signal; household alerts demoted
-to follow-ups; the Twilio TwiML and WebSocket round trip; no-answer
-escalation; the after-call pipeline respecting alert tiers and surviving a
-failed messenger; the digest; the scheduler; and the CLI end to end.
+alerts the family mid-call and switches to emergency mode without the model,
+with the emergency number matching the parent's country; a `today` signal that
+raises an alert while the call continues and changes the closing line; triggers
+that stay quiet for "no pain today" and "I'll eat later"; turn and time budgets;
+the model failing mid-call; the tired-parent shortcut and the open-ask gate; a
+message only counting as delivered when Sunday actually said it; analysis that
+drops unquoted claims, never downgrades a code signal, demotes household alerts
+to follow-ups and records a forgotten plumber; the Twilio TwiML and WebSocket
+round trip; no-answer escalation; the after-call pipeline respecting alert
+tiers, not re-sending an alert, and surviving a failed messenger; a digest that
+leads with the week's alerts; the scheduler; and the CLI end to end.
 
 ## Design
 
