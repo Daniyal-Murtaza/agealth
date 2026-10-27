@@ -98,6 +98,7 @@ def create_app(services: Services) -> FastAPI:
         mood_label=lambda m: MOOD_LABEL.get(m, ""),
         tier_label=lambda t: TIER_LABEL.get(t, t),
         languages=LANGUAGE_NAMES,
+        demo_login=settings.demo_login,
     )
 
     def render(request: Request, name: str, **ctx) -> HTMLResponse:
@@ -235,6 +236,34 @@ def create_app(services: Services) -> FastAPI:
         resp.set_cookie(
             SESSION_COOKIE,
             auth.make_session_cookie(phone),
+            max_age=auth.session_s,
+            httponly=True,
+            secure=cookie_secure,
+            samesite="lax",
+            path="/",
+        )
+        return resp
+
+    @app.get("/demo", response_class=HTMLResponse)
+    async def demo_page(request: Request):
+        """Hosted demo only (SUNDAY_DEMO_LOGIN). Signs the visitor in as the demo parent's
+        son so they can see a family page. The demo parent is invented; the session is for
+        the demo phone only, so it can never reach a real family."""
+        if not settings.demo_login:
+            raise HTTPException(status_code=404)
+        return render(request, "demo.html", viewer=auth.viewer_from_request(request))
+
+    @app.post("/demo")
+    async def demo_login():
+        from sunday.demo import FAMILY, seed_demo
+
+        if not settings.demo_login:
+            raise HTTPException(status_code=404)
+        seed_demo(repo)
+        resp = RedirectResponse("/app", status_code=303)
+        resp.set_cookie(
+            SESSION_COOKIE,
+            auth.make_session_cookie(digits_only(FAMILY[0][2])),
             max_age=auth.session_s,
             httponly=True,
             secure=cookie_secure,

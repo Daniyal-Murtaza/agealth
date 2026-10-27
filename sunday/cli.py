@@ -391,11 +391,15 @@ def serve(
             f"[yellow]warning:[/yellow] binding to {host} makes the server reachable from other "
             "machines. Prefer 127.0.0.1 behind a tunnel or reverse proxy."
         )
+    if svc.settings.seed_demo:
+        from sunday.demo import seed_demo
+
+        console.print(f"Demo family ready: {seed_demo(svc.repo)}")
     console.print(
         f"Sunday listening on http://{host}:{port}  "
         f"(public: {svc.settings.public_url or 'not set'})"
     )
-    uvicorn.run(create_app(svc), host=host, port=port, log_level="info")
+    uvicorn.run(create_app(svc), host=host, port=port, log_level="info", proxy_headers=True)
 
 
 @app.command()

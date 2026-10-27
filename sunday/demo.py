@@ -8,7 +8,8 @@ touches a real parent. Deterministic, no model, no network.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from sunday.repository import Repository
 
@@ -285,8 +286,17 @@ def seed_demo(repo: Repository) -> str:
         repo.add_memory(parent.id, text, topic=topic, source="family")
 
     now = datetime.now(UTC)
+    khi = ZoneInfo("Asia/Karachi")
+    today = now.astimezone(khi).date()
+
+    def morning(ago: int, hh: int = 9, mm: int = 4) -> datetime:
+        # Anchor on Amma's local day so the fortnight strip is the same at any UTC hour.
+        return datetime.combine(today - timedelta(days=ago), time(hh, mm), tzinfo=khi).astimezone(
+            UTC
+        )
+
     for day in DAYS:
-        at = (now - timedelta(days=day["ago"])).replace(hour=4, minute=4, second=0, microsecond=0)
+        at = morning(day["ago"])
         if day.get("missed"):
             c = repo.create_call(
                 parent.id, status="no_answer", scheduled_for=at, end_reason="no-answer"
@@ -340,7 +350,7 @@ def seed_demo(repo: Repository) -> str:
 
     # The missed morning raised a note that the family has already seen.
     missed = next(d for d in DAYS if d.get("missed"))
-    at = (now - timedelta(days=missed["ago"])).replace(hour=4, minute=25, second=0, microsecond=0)
+    at = morning(missed["ago"], 9, 25)
     a = repo.add_alert(
         parent.id,
         tier="today",

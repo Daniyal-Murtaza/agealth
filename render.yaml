@@ -1,0 +1,35 @@
+# Deploy to Render's free tier (no card needed):
+#   https://render.com/deploy?repo=https://github.com/Daniyal-Murtaza/agealth
+#
+# Free instances sleep after 15 minutes without traffic (about a minute to wake) and have
+# no persistent disk, so the SQLite file is recreated on each deploy. SUNDAY_SEED_DEMO
+# rebuilds the demo family on every start, which is all a demo link needs.
+#
+# Inside Render's container the service listens on all interfaces because Render's TLS
+# proxy is the only thing that can reach the container; the family page is behind sign-in.
+services:
+  - type: web
+    name: sunday
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    startCommand: sunday serve --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: SUNDAY_PROVIDER
+        value: fake            # set to openai and add OPENAI_API_KEY for real conversations
+      - key: SUNDAY_SECRET_KEY
+        generateValue: true
+      - key: SUNDAY_SEED_DEMO
+        value: "true"
+      - key: SUNDAY_DEMO_LOGIN
+        value: "true"
+      - key: SUNDAY_LOG_LEVEL
+        value: INFO
+      # SUNDAY_PUBLIC_URL is taken from RENDER_EXTERNAL_URL automatically.
+      # Twilio keys are optional; without them webhooks are rejected and calls run in the
+      # simulator only.

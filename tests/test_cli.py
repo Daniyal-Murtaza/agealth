@@ -740,3 +740,30 @@ def test_invite_sibling_and_edit_medications(env):
     client.post(f"/app/{pid}/medications", data={"remove": "blood pressure tablet"})
     assert svc.repo.get_parent(pid).medications == [{"name": "eye drops", "when": "night"}]
     assert "eye drops" in client.get("/app").text
+
+
+def test_hosted_demo_login_is_off_by_default_and_only_reaches_the_demo_family(env):
+    _setup(env)
+    _, _, client = _web(env)
+    assert client.get("/demo").status_code == 404
+    assert client.post("/demo").status_code == 404
+    assert "See a family" not in client.get("/").text
+
+    svc, _, client = _web(env, SUNDAY_DEMO_LOGIN=True)
+    assert "See a family" in client.get("/").text
+    assert client.get("/demo").status_code == 200
+    r = client.post("/demo")
+    assert r.status_code == 303 and r.headers["location"] == "/app"
+    page = client.get("/app").text
+    assert "Signed in as Daniyal" in page and "Dr Khan" in page  # the demo household
+    # The real family from _setup is not reachable from the demo session.
+    real = next(p for p in svc.repo.list_parents() if p.phone == "+923001234567")
+    assert client.get(f"/app?parent={real.id}").status_code == 404
+
+
+def test_public_url_falls_back_to_render_external_url(monkeypatch):
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://sunday.onrender.com/")
+    s = Settings(_env_file=None, SUNDAY_PROVIDER="fake")
+    assert s.public_url == "https://sunday.onrender.com"
+    s = Settings(_env_file=None, SUNDAY_PROVIDER="fake", SUNDAY_PUBLIC_URL="https://x.test")
+    assert s.public_url == "https://x.test"

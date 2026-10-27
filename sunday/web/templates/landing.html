@@ -5,7 +5,7 @@
   <div>
     <h1>Someone calls Amma every morning.<br>You hear how it went.</h1>
     <p class="lede">Sunday is a warm daily phone call for an ageing parent, on the phone they already have. Afterwards the family gets a two-line note on WhatsApp. If something is wrong, an alert straight away. The parent never touches technology.</p>
-    <p><a class="btn" href="/start">Start with your parent</a> &nbsp; <a class="btn ghost" href="#how">How it works</a></p>
+    <p><a class="btn" href="/start">Start with your parent</a> &nbsp; {% if demo_login %}<a class="btn ghost" href="/demo">See a family's page</a>{% else %}<a class="btn ghost" href="#how">How it works</a>{% endif %}</p>
     <p class="small faint">English, Urdu, Hindi and Punjabi. Introduces itself as the assistant sent by the family, every time.</p>
   </div>
   <div class="phone" aria-label="Example of the note a family receives">
