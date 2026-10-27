@@ -9,6 +9,8 @@ and SQLite for everything that must not be lost.
 - **Honest and warm.** Opens with a fixed line that says who it is and who sent it. Short turns, one question at a time, the parent's name only now and then. Remembers yesterday ("did the plumber come?") and passes on messages from the family.
 - **Safe by code, not by prompt.** "I fell", "chest pain", "can't breathe" (English, Urdu, Hindi, Punjabi, Latin or native script) are caught by keyword triggers before any model runs. The whole family is alerted before Sunday says another word; the call switches to calm scripted lines with the right emergency number for the parent's country and stays on the line.
 - **Nothing invented.** Every observation, alert and memory must quote the parent's words; quotes not found in the transcript are dropped. Household chores become follow-ups, never alerts. No medical advice, ever.
+- **They can call it too.** Save the number as "Sunday". A call from the parent's own phone is answered by name, skips the morning survey, passes on anything waiting and just talks; the family gets the same short note.
+- **Reminders on the right day.** "Your appointment is Tuesday at 10 with Dr Khan" is queued once and said on the day you choose, not tonight.
 - **Runs with no accounts.** An offline brain, a console messenger and a terminal simulator let you design the conversation before paying for anything.
 - **Degrades politely.** If the model is down the call ends with a kind line and the transcript is kept. Two missed calls raise a note; three raise an alert.
 
@@ -64,6 +66,7 @@ sunday med add par_XXXX "blood pressure tablet" --when morning
 sunday memory add par_XXXX "Grandchildren are Ayaan (7) and Zara (4)." --topic family
 sunday message par_XXXX --from Hira "I'll call Thursday after work."
 sunday message par_XXXX --from Daniyal --kind ask "Do you want a lift to the clinic on Tuesday?"
+sunday message par_XXXX --from Daniyal --kind remind --on 2026-11-02 "Appointment at 10 with Dr Khan tomorrow."
 
 sunday simulate par_XXXX        # have the call
 sunday show par_XXXX            # calls, alerts, memories, queued messages
@@ -88,7 +91,8 @@ things worth checking on today; `info` gets every note and the weekly digest.
 2. Expose the server: `ngrok http 8000` (or `cloudflared`) and set `SUNDAY_PUBLIC_URL` to the tunnel address.
 3. `sunday serve` in one terminal. It hosts the Twilio webhooks and a small read-only dashboard at `/`.
 4. In another: `sunday call par_XXXX`. The parent's phone rings; the family note arrives when the call ends.
-5. For daily calls run `sunday due` every five minutes from cron. It calls whoever's local call time it is, once per day, and records no-answers.
+5. So the parent can call in: in the Twilio console set the number's voice webhook to `https://<your-tunnel>/twilio/inbound` (POST). Sunday matches the caller id to a parent; unknown numbers hear a kind refusal. Save the number in the parent's phone as "Sunday".
+6. For daily calls run `sunday due` every five minutes from cron. It calls whoever's local call time it is, once per day, records no-answers, and on Sunday evening (local time) sends each family their weekly report.
 
 ```
 */5 * * * * cd /path/to/agealth && .venv/bin/sunday due >> data/due.log 2>&1
@@ -120,12 +124,15 @@ Sunday is staying on the line with them. Please call them or go now.
 ## Verify offline
 
 ```bash
-pytest                                   # 66 offline tests, ~1s
+pytest                                   # 75 offline tests, ~1s
 ruff check . && ruff format --check .    # lint / format
 ```
 
 The tests use a scripted model and an in-memory database, so they need no
-keys. They cover: a normal call through the plan to a warm close; a fall that
+keys. They cover: a normal call through the plan to a warm close; a parent
+calling in and getting a conversation instead of a survey, with the pipeline
+running when the line closes; reminders held until their day; the weekly
+report due once on Sunday evening; an old database gaining new columns; a fall that
 alerts the family mid-call and switches to emergency mode without the model,
 with the emergency number matching the parent's country; a `today` signal that
 raises an alert while the call continues and changes the closing line; triggers
@@ -148,6 +155,7 @@ the code enforces, what the live runs changed, failure handling and tradeoffs.
 ```
 sunday/
   cli.py            parent / family / med / memory / message / simulate / call / due / serve
+  scheduler.py      who is due a call now; whose weekly report is due
   config.py         settings (.env)
   models.py         Parent, FamilyMember, Call, Turn, Observation, Alert, QueuedMessage, Memory
   repository.py     every SQLite query, in one place
@@ -159,13 +167,12 @@ sunday/
     offline.py      rule-based brain so the product runs with no API key
   calls/
     session.py      the live-call state machine
-    transport.py    Twilio Conversation Relay (TwiML + WebSocket) and the terminal simulator
+    transport.py    Twilio Conversation Relay (TwiML + WebSocket), inbound calls, the terminal simulator
     dialer.py       outbound calls and no-answer escalation
   notify/
     pipeline.py     after-call: alerts first, then analysis, storage, family notes
     messenger.py    WhatsApp / SMS via Twilio, or the console
     digest.py       weekly trends in plain language
-  scheduler.py      who is due a call now
   web.py            Twilio webhooks + family dashboard
 tests/              offline unit and end-to-end tests
 ```

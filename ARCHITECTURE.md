@@ -7,7 +7,7 @@ emergency, when it ends, what the family is told and when, and what counts
 as evidence.
 
 ```
-cron ──► sunday due ──► dialer (Twilio) ──► parent's phone
+cron ──► sunday due ──► dialer (Twilio) ──► parent's phone ◄── or the parent rings "Sunday"
                                                  │  speech ⇄ text (Twilio Conversation Relay)
                                                  ▼
           transport (Twilio WebSocket | terminal simulator | test harness)
@@ -32,18 +32,18 @@ cron ──► sunday due ──► dialer (Twilio) ──► parent's phone
 
 | Path | Role |
 |---|---|
-| `models.py`, `repository.py` | Parent, FamilyMember, Medication, Memory, QueuedMessage, Call, Turn, Observation, Alert on local SQLite. One thin repository owns every query; nothing else touches the database. |
+| `models.py`, `repository.py` | Parent, FamilyMember, Medication, Memory, QueuedMessage, Call, Turn, Observation, Alert on local SQLite. One thin repository owns every query; nothing else touches the database. On open it adds any columns a newer model has that an older database lacks. A queued message may carry `remind_on`, a local date before which it is held back; `parent_by_phone` matches an inbound caller on digits. |
 | `config.py` | Provider, keys, budgets, DB path, from `.env`. |
 | `brain/safety.py` | Deterministic multilingual keyword triggers run on every utterance before any model. Fall, chest pain, breathing, stroke signs, bleeding, "call an ambulance", scam in progress → `now`. Severe pain, fever, confusion, low mood, medication concern, scam attempt, no food → `today`. Denials ("no pain today") and food that is on its way ("haven't eaten yet, I'll make something") keep `today` triggers quiet; a `now` trigger is never softened. `SafetyState` dedupes and tracks the highest tier. The emergency script lines and the emergency number per country (derived from the parent's phone prefix) live here too. |
 | `brain/conversation.py` | A loose plan (greeting, wellbeing, sleep, medication, meals, follow-ups, family messages, open talk, close) the model weaves through. Builds the system prompt from memories, yesterday's follow-ups and queued family messages. Fixed honest opening line per language. Replies trimmed to three sentences; the parent's name allowed in at most one of every three turns. A cheap bookkeeping call marks plan items covered and messages delivered; code only accepts a message as delivered if Sunday's own words contain it. |
 | `brain/analysis.py` | One structured call turns the transcript into summary, typed observations, memories and alerts, each quoting the parent. Quotes not in the transcript are dropped. Alerts whose kind or text is a household matter become follow-up observations; household observations are always follow-ups; a reply to a family message never is; a tradesperson or delivery the parent said has not come is recorded even if the model forgot it. Code-detected signals are merged in and never downgraded. Also decides the no-answer tiers. |
 | `brain/model.py`, `brain/offline.py` | `ChatModel` protocol with an OpenAI adapter and a scripted model for tests; `complete_json` validates against a Pydantic model with one repair attempt. The offline brain recognises the three prompt types and answers with rules, so every path runs with no key. |
-| `calls/session.py` | The live-call state machine: `start`, `hear`, `hangup`. Phases talking → emergency / closing → ended. Turn and minute budgets. Persists every turn as it happens. Hands a `now` alert to an `on_alert` hook the instant it is persisted. Never raises to the transport for model failures. |
-| `calls/transport.py` | Twilio Conversation Relay: TwiML for the answered call, a WebSocket that receives final speech-to-text and sends text to speak, and the hang-up message. The terminal simulator drives the same session. |
-| `calls/dialer.py`, `scheduler.py` | `Telephony` protocol with Twilio and fake implementations. `is_due` checks local call time within a 20-minute window, call days, and whether we already called today. `record_outcome` maps Twilio status callbacks and escalates no-answers: two in a row → `today`, three → `now`. |
+| `calls/session.py` | The live-call state machine: `start`, `hear`, `hangup`. Phases talking → emergency / closing → ended. Turn and minute budgets. Persists every turn as it happens. Hands a `now` alert to an `on_alert` hook the instant it is persisted. An `inbound` session uses a shorter plan (how are you, anything waiting from the family, open talk) and a greeting that is glad they called; the safety triggers are identical. Never raises to the transport for model failures. |
+| `calls/transport.py` | Twilio Conversation Relay: TwiML for the answered call, `/twilio/inbound` for a call the parent places (caller id → parent, or a kind refusal), a WebSocket that receives final speech-to-text and sends text to speak, and the hang-up message. When the socket closes it runs `on_end`, so the after-call pipeline never depends on Twilio's status callback being configured. The terminal simulator drives the same session. |
+| `calls/dialer.py`, `scheduler.py` | `Telephony` protocol with Twilio and fake implementations. `is_due` checks local call time within a 20-minute window, call days, and whether we already called today. `digest_due` is Sunday evening local time, once a week. `record_outcome` maps Twilio status callbacks and escalates no-answers: two in a row → `today`, three → `now`. |
 | `notify/pipeline.py` | `notify_urgent`, called from inside a live call to send `now` alerts at once; and `finish_call`, the one function transports call when a call ends. Idempotent. Any unsent emergencies first, then analysis, storage, and a short note to each family member whose alert level wants it. |
 | `notify/messenger.py` | WhatsApp or SMS via Twilio, or the console. One member's failure never blocks the others. |
-| `notify/digest.py` | Trends over stored alerts and observations: the week's alerts first, then calls, medication, mood, sleep, "worth a look" flags, open follow-ups. Pure code, never a diagnosis. |
+| `notify/digest.py` | Trends over stored alerts and observations: the week's alerts first, then calls, medication, mood, sleep, "worth a look" flags, open follow-ups. Pure code, never a diagnosis. `send_digest` delivers it to members on `info` and stamps the parent so the cron tick sends it once. |
 | `web.py`, `cli.py` | Twilio webhooks (`/twilio/voice`, `/twilio/relay`, `/twilio/status`), a read-only dashboard, `/health`; the operator CLI. |
 
 ## Three rules, enforced in code
@@ -54,7 +54,7 @@ cron ──► sunday due ──► dialer (Twilio) ──► parent's phone
 
 ## The call, turn by turn
 
-1. Transport reports the call answered. `start` writes the opening line, marks `greeting` done.
+1. Transport reports the call answered (or, for an inbound call, that the parent is on the line). `start` writes the opening line, marks `greeting` done. Queued family messages are loaded for the parent's local date, so a reminder dated for Tuesday is not read out on Monday.
 2. Each final utterance goes to `hear`: it is persisted, then run through `keyword_signals`. Fresh signals are persisted as alerts at once; a `now` alert is also sent to the family right there, via the `on_alert` hook `Services` wires to the messenger.
 3. If any `now` signal is active, the next scripted emergency line is returned and the call never closes on its own.
 4. Otherwise budgets are checked (turns, minutes), then `update_progress` asks the model which plan items the parent has now covered and which family messages were delivered. Code applies three gates: an item is only marked if it is on the plan; a message is only delivered if at least half its content words appear in something Sunday actually said ("I'll let Hira know" does not deliver Hira's message); and an unanswered family `ask` keeps `family_messages` open even if the parent sounds tired.
@@ -91,6 +91,9 @@ SQLite via SQLAlchemy at `SUNDAY_DB` (default `data/sunday.sqlite`, gitignored; 
 | No answer / busy | Call recorded; second consecutive → `today` note; third → `now` alert |
 | A messenger fails for one family member | Logged; other members still receive their note |
 | Twilio status callback arrives after the session ended | Ignored; the session already recorded the outcome |
+| Parent rings from an unknown number | A short spoken explanation and hang-up; nothing is created |
+| Relay closes without a status callback (inbound calls) | `on_end` runs the pipeline; a later callback finds the call already notified |
+| Database created by an older version | Missing columns are added on open; existing rows are untouched |
 
 ## What the live runs changed
 
@@ -106,6 +109,8 @@ A second end-to-end pass through three simulated calls (an ordinary day, a fall,
 - **Household follow-ups are the model's job, alerts are code's.** The model is good at noticing "did the plumber come" is worth asking tomorrow; it is not trusted to decide what wakes a family up.
 - **SQLite, one process.** Right for a handful of parents and a daily call each. Nothing in the module boundaries prevents swapping the repository.
 
-## Not in this phase
+## Where this sits on the roadmap
 
-Recordings, a voice per parent, inbound calls from the parent, story prompts and the yearly book, the model-based safety classifier, encrypted executor access. All are planned and none change the shape above.
+Phase 0 is complete: the daily call in the parent's language, memory across calls, medication and dated reminder questions, the WhatsApp or SMS note after each call, missed-call and keyword alerts, and the parent able to call in. From Phase 1, the question queue, alert tiers and roles per family member, and the Sunday-evening weekly report are also done.
+
+Not yet: recordings with consent and the "listen to the call" link, a voice per parent, the trends dashboard with charts (the dashboard shows text), the care-coordination list of appointments and doctors the call can read from, billing, story prompts and the archive, the model-based safety classifier, the B2B API. None change the shape above.
