@@ -7,11 +7,11 @@ methods, which makes the behaviour easy to test and the storage easy to swap.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from sunday.models import (
@@ -46,7 +46,22 @@ class Repository:
                 f"sqlite:///{db_path}", future=True, connect_args={"check_same_thread": False}
             )
         Base.metadata.create_all(self.engine)
+        self._add_missing_columns()
         self._sessions = sessionmaker(self.engine, expire_on_commit=False)
+
+    def _add_missing_columns(self) -> None:
+        """Tiny forward-only migration: columns added to a model appear in old databases.
+        SQLite can add a nullable column in place; that is all we ever need."""
+        insp = inspect(self.engine)
+        with self.engine.begin() as conn:
+            for table in Base.metadata.sorted_tables:
+                have = {c["name"] for c in insp.get_columns(table.name)}
+                for col in table.columns:
+                    if col.name not in have:
+                        ddl = col.type.compile(self.engine.dialect)
+                        conn.execute(
+                            text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {ddl}')
+                        )
 
     @contextmanager
     def session(self):
@@ -284,15 +299,27 @@ class Repository:
     # --- queued messages ------------------------------------------------------
 
     def queue_message(
-        self, parent_id: str, *, from_name: str, text: str, kind: str = "say"
+        self,
+        parent_id: str,
+        *,
+        from_name: str,
+        text: str,
+        kind: str = "say",
+        remind_on: date | None = None,
     ) -> QueuedMessage:
         with self.session() as s:
-            m = QueuedMessage(parent_id=parent_id, from_name=from_name, text=text, kind=kind)
+            m = QueuedMessage(
+                parent_id=parent_id, from_name=from_name, text=text, kind=kind, remind_on=remind_on
+            )
             s.add(m)
             s.flush()
             return m
 
-    def undelivered_messages(self, parent_id: str) -> list[QueuedMessage]:
+    def undelivered_messages(
+        self, parent_id: str, *, on: date | None = None, include_future: bool = False
+    ) -> list[QueuedMessage]:
+        """Messages not yet passed on. Dated reminders are held back until their day unless
+        ``include_future`` (for `sunday show`). ``on`` is the parent's local date."""
         with self.session() as s:
             q = (
                 select(QueuedMessage)
@@ -300,7 +327,21 @@ class Repository:
                 .where(QueuedMessage.delivered_call_id == "")
                 .order_by(QueuedMessage.created_at)
             )
-            return list(s.scalars(q))
+            items = list(s.scalars(q))
+        if include_future:
+            return items
+        today = on or datetime.now(UTC).date()
+        return [m for m in items if m.remind_on is None or m.remind_on <= today]
+
+    def parent_by_phone(self, phone: str) -> Parent | None:
+        """Who is calling us? Matched on digits only, so "+92 300..." and "+92300..." agree."""
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        if not digits:
+            return None
+        for p in self.list_parents():
+            if "".join(ch for ch in p.phone if ch.isdigit()) == digits:
+                return p
+        return None
 
     def mark_message_delivered(self, message_id: str, call_id: str, response: str = "") -> None:
         with self.session() as s:

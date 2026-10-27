@@ -73,7 +73,9 @@ class Services:
             settings=settings, repo=repo, model=model, messenger=messenger, telephony=telephony
         )
 
-    def new_session(self, parent: Parent, *, country: str | None = None) -> CallSession:
+    def new_session(
+        self, parent: Parent, *, country: str | None = None, direction: str = "outbound"
+    ) -> CallSession:
         """A live call. ``now`` alerts are sent to the family the moment they fire, from inside
         the call; everything else waits for :meth:`complete`."""
 
@@ -81,7 +83,13 @@ class Services:
             notify_urgent(self.repo, self.messenger, parent.id)
 
         return CallSession(
-            self.repo, self.model, self.settings, parent, country=country, on_alert=urgent
+            self.repo,
+            self.model,
+            self.settings,
+            parent,
+            country=country,
+            on_alert=urgent,
+            direction=direction,
         )
 
     def complete(self, session: CallSession) -> None:

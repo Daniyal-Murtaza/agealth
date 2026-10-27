@@ -10,8 +10,11 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from sunday.logging_setup import get_logger
 from sunday.models import Alert, Call, Observation, Parent
 from sunday.repository import Repository
+
+log = get_logger("notify.digest")
 
 
 @dataclass
@@ -96,6 +99,24 @@ def compute_trends(repo: Repository, parent: Parent, *, days: int = 7) -> Trends
         t.worth_a_look.append(f"{t.calls_missed} calls went unanswered.")
     _ = since
     return t
+
+
+def send_digest(repo: Repository, messenger, parent: Parent, *, days: int = 7) -> int:
+    """Send the week to every family member who gets 'info'. Records when, so the Sunday
+    evening cron tick sends it once."""
+    from sunday.notify.messenger import wants
+
+    text = format_digest(parent, compute_trends(repo, parent, days=days))
+    sent = 0
+    for m in repo.family_for(parent.id):
+        if wants(m, "info"):
+            try:
+                messenger.send(m, text)
+                sent += 1
+            except Exception as exc:  # noqa: BLE001 - one bad number must not stop the rest
+                log.error("digest to %s failed: %s", m.name, exc)
+    repo.update_parent(parent.id, last_digest_at=datetime.now(UTC))
+    return sent
 
 
 def format_digest(parent: Parent, t: Trends) -> str:

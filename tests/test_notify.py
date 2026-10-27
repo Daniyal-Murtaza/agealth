@@ -375,3 +375,50 @@ def test_digest_leads_with_alerts(world):
     assert "Alerts: 1 urgent, 2 check-today." in text
     assert "URGENT on" in text and "Amma said they fell." in text
     assert "2 'check today' alerts: pain, no food." in text
+
+
+def test_weekly_digest_is_due_on_sunday_evening_once(world):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
+    from sunday.notify.digest import send_digest
+    from sunday.scheduler import digest_due, digest_due_parents
+
+    repo, parent, _ = world
+    repo.update_parent(parent.id, timezone="Asia/Karachi")
+    parent = repo.get_parent(parent.id)
+    khi = ZoneInfo("Asia/Karachi")
+    sunday_evening = datetime(2026, 11, 1, 18, 30, tzinfo=khi)  # a Sunday
+    assert digest_due(parent, now=sunday_evening)
+    assert not digest_due(parent, now=sunday_evening.replace(hour=9))  # morning
+    assert not digest_due(parent, now=sunday_evening - timedelta(days=1))  # Saturday
+    # 18:30 Karachi is 13:30 UTC; a naive UTC clock must agree with the local one.
+    assert digest_due(parent, now=sunday_evening.astimezone(UTC))
+    assert [p.id for p in digest_due_parents(repo, now=sunday_evening)] == [parent.id]
+
+    messenger = ConsoleMessenger(echo=False)
+    assert send_digest(repo, messenger, parent) == 1  # Daniyal gets info; Hira only 'now'
+    assert messenger.sent[0][0] == "Daniyal" and "Amma's week" in messenger.sent[0][1]
+    parent = repo.get_parent(parent.id)
+    assert parent.last_digest_at is not None
+    # Sent an hour earlier: not due again this evening, due again next Sunday.
+    repo.update_parent(parent.id, last_digest_at=sunday_evening - timedelta(hours=1))
+    parent = repo.get_parent(parent.id)
+    assert not digest_due(parent, now=sunday_evening)
+    assert digest_due(parent, now=sunday_evening + timedelta(days=7))
+
+
+def test_inbound_call_note_says_who_called(world):
+    repo, parent, _ = world
+    call = repo.create_call(
+        parent.id,
+        status="completed",
+        direction="inbound",
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
+    )
+    from sunday.brain.analysis import CallAnalysis
+    from sunday.notify.pipeline import format_summary
+
+    text = format_summary(parent, call, CallAnalysis(summary="Wanted a chat.", mood="ok"))
+    assert text.startswith("Amma called Sunday - ")

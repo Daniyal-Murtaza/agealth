@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import typer
@@ -28,8 +29,8 @@ from sunday.app import Services
 from sunday.calls.dialer import dial
 from sunday.calls.transport import Simulator
 from sunday.config import MissingCredentialError, load_settings
-from sunday.notify.digest import compute_trends, format_digest
-from sunday.scheduler import due_parents
+from sunday.notify.digest import compute_trends, format_digest, send_digest
+from sunday.scheduler import digest_due_parents, due_parents
 
 app = typer.Typer(
     add_completion=False, no_args_is_help=True, help="Sunday: a daily phone call for your parent."
@@ -177,13 +178,27 @@ def message(
     text: str,
     from_name: str = typer.Option(..., "--from"),
     kind: str = typer.Option("say", "--kind", help="say | ask | remind"),
+    on: str | None = typer.Option(
+        None,
+        "--on",
+        help="Hold it until this date (YYYY-MM-DD), e.g. the day before a clinic visit",
+    ),
     db: Path | None = DbOpt,
 ) -> None:
-    """Queue something for Sunday to say or ask on the next call."""
+    """Queue something for Sunday to say or ask on the next call (or on a given day)."""
     svc = _services(db)
     _parent_or_fail(svc, parent_id)
-    svc.repo.queue_message(parent_id, from_name=from_name, text=text, kind=kind)
-    console.print(f"Queued for the next call ({kind}): {text}")
+    remind_on = None
+    if on:
+        try:
+            remind_on = date.fromisoformat(on)
+        except ValueError:
+            _fail(f"--on must be YYYY-MM-DD, got {on!r}")
+    svc.repo.queue_message(
+        parent_id, from_name=from_name, text=text, kind=kind, remind_on=remind_on
+    )
+    when = f"from {remind_on:%a %d %b}" if remind_on else "for the next call"
+    console.print(f"Queued {when} ({kind}): {text}")
 
 
 # --------------------------------------------------------------- calls
@@ -240,10 +255,12 @@ def call(parent_id: str, db: Path | None = DbOpt) -> None:
 
 @app.command()
 def due(db: Path | None = DbOpt, dry_run: bool = typer.Option(False, "--dry-run")) -> None:
-    """Place calls for everyone whose call time it is. Run every few minutes from cron."""
+    """Place calls for everyone whose call time it is, and send the weekly report on Sunday
+    evening. Run every few minutes from cron."""
     svc = _services(db, need_model=not dry_run)
     parents = due_parents(svc.repo)
-    if not parents:
+    digests = digest_due_parents(svc.repo)
+    if not parents and not digests:
         console.print("Nobody is due right now.")
         return
     for p in parents:
@@ -251,6 +268,12 @@ def due(db: Path | None = DbOpt, dry_run: bool = typer.Option(False, "--dry-run"
             console.print(f"would call {p.name} ({p.phone}) now")
         else:
             console.print(f"calling {p.name}: {dial(svc.repo, svc.telephony, svc.settings, p)}")
+    for p in digests:
+        if dry_run:
+            console.print(f"would send {p.address()}'s weekly report now")
+        else:
+            n = send_digest(svc.repo, svc.messenger, p)
+            console.print(f"sent {p.address()}'s weekly report to {n} family member(s)")
 
 
 # --------------------------------------------------------------- reporting
@@ -296,12 +319,8 @@ def digest(
     text = format_digest(p, compute_trends(svc.repo, p, days=days))
     console.print(Panel(text, title=f"{p.address()}", border_style="yellow"))
     if send:
-        from sunday.notify.messenger import wants
-
-        for m in svc.repo.family_for(p.id):
-            if wants(m, "info"):
-                svc.messenger.send(m, text)
-        console.print("Sent.")
+        n = send_digest(svc.repo, svc.messenger, p, days=days)
+        console.print(f"Sent to {n} family member(s).")
 
 
 @app.command()
@@ -335,11 +354,12 @@ def show(parent_id: str, db: Path | None = DbOpt) -> None:
         console.print("\n[bold]Sunday knows[/bold]")
         for m in mems[-10:]:
             console.print(f"  - {m.text}")
-    q = svc.repo.undelivered_messages(p.id)
+    q = svc.repo.undelivered_messages(p.id, include_future=True)
     if q:
         console.print("\n[bold]Queued for next call[/bold]")
         for m in q:
-            console.print(f"  - ({m.kind}) from {m.from_name}: {m.text}")
+            when = f" [dim](from {m.remind_on:%a %d %b})[/dim]" if m.remind_on else ""
+            console.print(f"  - ({m.kind}) from {m.from_name}: {m.text}{when}")
 
 
 @app.command()

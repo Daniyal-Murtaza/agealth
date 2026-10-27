@@ -5,7 +5,8 @@ development you put a tunnel (ngrok, cloudflared) in front and set
 SUNDAY_PUBLIC_URL to the tunnel address.
 
 Routes
-  POST /twilio/voice/{parent_id}   Twilio: the parent answered -> TwiML
+  POST /twilio/voice/{parent_id}   Twilio: the parent answered our call -> TwiML
+  POST /twilio/inbound             Twilio: the parent rang us -> TwiML (matched by caller id)
   WS   /twilio/relay               Twilio: live conversation text in/out
   POST /twilio/status/{call_id}    Twilio: call ended / no answer / busy
   GET  /                           dashboard: parents, last call, open alerts
@@ -45,7 +46,30 @@ def create_app(services: Services) -> FastAPI:
         _SESSIONS[call_sid] = session
         return session
 
-    app.include_router(twilio_router(make_session, public_url=public_url))
+    def make_inbound_session(from_number: str, call_sid: str) -> CallSession | None:
+        parent = services.repo.parent_by_phone(from_number)
+        if parent is None:
+            return None
+        session = services.new_session(parent, direction="inbound")
+        _SESSIONS[call_sid] = session
+        return session
+
+    def on_end(session: CallSession) -> None:
+        # The relay closed. Run the pipeline now (idempotent); drop the pending entry so a
+        # later status callback does not run it twice.
+        for sid, s in list(_SESSIONS.items()):
+            if s is session:
+                _SESSIONS.pop(sid, None)
+        services.complete(session)
+
+    app.include_router(
+        twilio_router(
+            make_session,
+            public_url=public_url,
+            make_inbound_session=make_inbound_session,
+            on_end=on_end,
+        )
+    )
 
     @app.post("/twilio/status/{call_id}")
     async def status(

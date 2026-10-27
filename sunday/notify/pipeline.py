@@ -48,8 +48,13 @@ def format_summary(parent: Parent, call: Call, analysis: CallAnalysis) -> str:
         "low": "sounded a bit low",
         "unclear": "",
     }.get(analysis.mood, "")
+    head = (
+        f"{parent.address()} called Sunday"
+        if call.direction == "inbound"
+        else f"Sunday called {parent.address()}"
+    )
     lines = [
-        f"Sunday called {parent.address()} - {when}" + (f" - {mood}" if mood else ""),
+        f"{head} - {when}" + (f" - {mood}" if mood else ""),
         "",
         analysis.summary.strip(),
     ]
@@ -127,7 +132,7 @@ def finish_call(
     # 2. Analyse.
     delivered = [
         (m.id, m.text)
-        for m in repo.undelivered_messages(parent.id)
+        for m in repo.undelivered_messages(parent.id, include_future=True)
         if m.id in delivered_message_ids
     ]
     analysis = analyse_call(

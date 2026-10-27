@@ -132,8 +132,26 @@ def end_message(reason: str) -> str:
     return json.dumps({"type": "end", "handoffData": json.dumps({"reason": reason})})
 
 
-def twilio_router(make_session: "Callable[[str, str], CallSession]", *, public_url: str):
-    """Build the FastAPI router. ``make_session(parent_id, call_sid)`` creates a session."""
+NOT_SET_UP = (
+    "Hello. This is Sunday, but this number is not set up for your phone yet. "
+    "Please ask your family to add it. Goodbye for now."
+)
+
+
+def twilio_router(
+    make_session: "Callable[[str, str], CallSession]",
+    *,
+    public_url: str,
+    make_inbound_session: "Callable[[str, str], CallSession | None] | None" = None,
+    on_end: "Callable[[CallSession], None] | None" = None,
+):
+    """Build the FastAPI router.
+
+    ``make_session(parent_id, call_sid)`` creates a session for a call we placed.
+    ``make_inbound_session(from_number, call_sid)`` creates one when the parent rings us, or
+    returns None if the number is unknown. ``on_end(session)`` runs when the relay closes, so
+    the after-call pipeline does not depend on Twilio's status callback being configured.
+    """
     from fastapi import APIRouter, Form, WebSocket, WebSocketDisconnect
     from fastapi.responses import Response
 
@@ -148,6 +166,30 @@ def twilio_router(make_session: "Callable[[str, str], CallSession]", *, public_u
         ev = session.start()
         twiml = conversation_relay_twiml(
             ws_url, language=session.parent.language, parent_id=parent_id, greeting=ev.say
+        )
+        _PENDING[CallSid] = session
+        return Response(content=twiml, media_type="application/xml")
+
+    @router.post("/twilio/inbound")
+    async def inbound(
+        CallSid: str = Form(""),  # noqa: N803
+        From: str = Form(""),  # noqa: N803
+    ) -> Response:
+        # The parent rang the number saved as "Sunday". Point the Twilio number's voice
+        # webhook here. We match on caller id; an unknown number gets a kind refusal.
+        from xml.sax.saxutils import escape
+
+        session = make_inbound_session(From, CallSid) if make_inbound_session else None
+        if session is None:
+            log.warning("inbound call from unknown number %s", From)
+            twiml = (
+                '<?xml version="1.0" encoding="UTF-8"?><Response>'
+                f"<Say>{escape(NOT_SET_UP)}</Say><Hangup/></Response>"
+            )
+            return Response(content=twiml, media_type="application/xml")
+        ev = session.start()
+        twiml = conversation_relay_twiml(
+            ws_url, language=session.parent.language, parent_id=session.parent.id, greeting=ev.say
         )
         _PENDING[CallSid] = session
         return Response(content=twiml, media_type="application/xml")
@@ -188,6 +230,11 @@ def twilio_router(make_session: "Callable[[str, str], CallSession]", *, public_u
         finally:
             if session is not None:
                 session.hangup("line_dropped" if session.phase.value != "ended" else "completed")
+                if on_end is not None:
+                    try:
+                        on_end(session)
+                    except Exception as exc:  # noqa: BLE001 - never let the socket close raise
+                        log.error("after-call pipeline failed for %s: %s", session.call.id, exc)
 
     return router
 

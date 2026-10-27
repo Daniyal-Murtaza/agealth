@@ -238,3 +238,66 @@ def test_commands_fail_cleanly_without_parent(env):
     ):
         r = run(env, args)
         assert r.exit_code == 1 and "no parent" in r.output
+
+
+def test_parent_can_call_in(env):
+    pid = _setup(env)
+    settings = Settings(
+        _env_file=None,
+        SUNDAY_PROVIDER="fake",
+        SUNDAY_DB=Path(env["SUNDAY_DB"]),
+        SUNDAY_PUBLIC_URL="https://x.test",
+    )
+    messenger = ConsoleMessenger(echo=False)
+    svc = Services.from_settings(settings, messenger=messenger)
+    client = TestClient(create_app(svc))
+
+    # An unknown number gets a kind refusal and a hang-up.
+    r = client.post("/twilio/inbound", data={"CallSid": "CA9", "From": "+15559999999"})
+    assert r.status_code == 200 and "<Hangup/>" in r.text and "not set up" in r.text
+    assert "ConversationRelay" not in r.text
+
+    # Amma rings from her own phone at 2am: greeted by name, no survey, pipeline runs when
+    # the relay closes even though no status callback is configured for inbound calls.
+    r = client.post("/twilio/inbound", data={"CallSid": "CA10", "From": "+92 300 1234567"})
+    assert r.status_code == 200 and "ConversationRelay" in r.text
+    assert "How lovely that you called" in r.text
+    with client.websocket_connect("/twilio/relay") as ws:
+        ws.send_text(json.dumps({"type": "setup", "callSid": "CA10"}))
+        ws.send_text('{"type":"prompt","voicePrompt":"I could not sleep beta","last":true}')
+        first = json.loads(ws.receive_text())["token"]
+        assert "tablets" not in first  # no medication survey on an inbound call
+        ws.send_text('{"type":"prompt","voicePrompt":"okay bye now","last":true}')
+        ws.receive_text()
+        ws.receive_text()
+    assert any(t.startswith("Amma called Sunday") for _, t in messenger.sent)
+    repo = Repository(env["SUNDAY_DB"])
+    calls = repo.recent_calls(pid, days=1)
+    assert calls[0].direction == "inbound" and calls[0].notified_at is not None
+    # A late status callback is harmless: the pipeline already ran.
+    before = len(messenger.sent)
+    client.post("/twilio/status/x", data={"CallSid": "CA10", "CallStatus": "completed"})
+    assert len(messenger.sent) == before
+
+
+def test_message_can_be_held_until_a_date(env):
+    pid = _setup(env)
+    r = run(
+        env,
+        [
+            "message",
+            pid,
+            "--from",
+            "Daniyal",
+            "--kind",
+            "remind",
+            "--on",
+            "2030-01-02",
+            "Appointment with Dr Khan at 10.",
+        ],
+    )
+    assert r.exit_code == 0 and "Queued from Wed 02 Jan" in r.output
+    r = run(env, ["message", pid, "--from", "Daniyal", "--on", "tomorrow", "x"])
+    assert r.exit_code == 1 and "YYYY-MM-DD" in r.output
+    r = run(env, ["show", pid])
+    assert "Dr Khan" in r.output and "(from Wed 02 Jan)" in r.output

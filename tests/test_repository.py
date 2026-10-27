@@ -127,3 +127,51 @@ def test_queued_messages_and_memories(repo, parent):
     )
     mems = repo.memories_for(parent.id)
     assert len(mems) == 2 and mems[1].evidence.startswith("Farida")
+
+
+def test_parent_by_phone_matches_on_digits(repo, parent):
+    assert repo.parent_by_phone("+1 (555) 123-4567").id == parent.id
+    assert repo.parent_by_phone("15551234567").id == parent.id
+    assert repo.parent_by_phone("+15550000000") is None
+    assert repo.parent_by_phone("") is None
+
+
+def test_dated_reminders_are_held_until_their_day(repo, parent):
+    from datetime import date, timedelta
+
+    today = date(2026, 10, 27)
+    repo.queue_message(parent.id, from_name="Hira", text="I'll call Thursday.")
+    appt = repo.queue_message(
+        parent.id,
+        from_name="Daniyal",
+        text="Your appointment is Tuesday at 10 with Dr Khan.",
+        kind="remind",
+        remind_on=today + timedelta(days=1),
+    )
+    assert [m.from_name for m in repo.undelivered_messages(parent.id, on=today)] == ["Hira"]
+    assert len(repo.undelivered_messages(parent.id, on=today + timedelta(days=1))) == 2
+    assert len(repo.undelivered_messages(parent.id, on=today + timedelta(days=5))) == 2
+    assert len(repo.undelivered_messages(parent.id, include_future=True)) == 2
+    assert repo.undelivered_messages(parent.id, include_future=True)[1].id == appt.id
+
+
+def test_new_columns_are_added_to_an_old_database(tmp_path):
+    from sqlalchemy import inspect, text
+
+    path = tmp_path / "old.sqlite"
+    first = Repository(path)
+    with first.engine.begin() as conn:
+        conn.execute(text("ALTER TABLE queued_messages DROP COLUMN remind_on"))
+        conn.execute(text("ALTER TABLE parents DROP COLUMN last_digest_at"))
+    assert "remind_on" not in {
+        c["name"] for c in inspect(first.engine).get_columns("queued_messages")
+    }
+    first.engine.dispose()
+
+    second = Repository(path)  # opening again migrates in place
+    cols = {c["name"] for c in inspect(second.engine).get_columns("queued_messages")}
+    assert "remind_on" in cols
+    assert "last_digest_at" in {c["name"] for c in inspect(second.engine).get_columns("parents")}
+    p = second.add_parent(name="A", phone="+15550001")
+    second.queue_message(p.id, from_name="B", text="hi")
+    assert len(second.undelivered_messages(p.id)) == 1

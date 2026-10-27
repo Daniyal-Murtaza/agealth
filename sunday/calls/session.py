@@ -25,7 +25,9 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from sunday.brain.conversation import (
+    INBOUND_PLAN,
     CallContext,
+    inbound_opening_line,
     next_line,
     opening_line,
     update_progress,
@@ -111,14 +113,16 @@ class CallSession:
         call: Call | None = None,
         country: str | None = None,
         on_alert: Callable[[Alert], None] | None = None,
+        direction: str = "outbound",
     ) -> None:
         self.repo = repo
         self.model = model
         self.settings = settings
         self.parent = parent
         self.on_alert = on_alert
+        self.direction = direction
         self.call = call or repo.create_call(
-            parent.id, status="in_progress", started_at=datetime.now(UTC)
+            parent.id, status="in_progress", started_at=datetime.now(UTC), direction=direction
         )
         self.phase = Phase.NOT_STARTED
         self.transcript: list[tuple[str, str]] = []
@@ -131,8 +135,9 @@ class CallSession:
             parent=parent,
             memories=repo.memories_for(parent.id),
             follow_ups=repo.pending_follow_ups(parent.id),
-            queued=repo.undelivered_messages(parent.id),
+            queued=repo.undelivered_messages(parent.id, on=parent.local_today()),
             family_names=[m.name for m in repo.family_for(parent.id)],
+            plan=INBOUND_PLAN if direction == "inbound" else CallContext.plan,
         )
         self._parent_turns = 0
 
@@ -142,7 +147,11 @@ class CallSession:
         """Call answered. Returns the opening line."""
         self.repo.update_call(self.call.id, status="in_progress", started_at=datetime.now(UTC))
         self.phase = Phase.TALKING
-        line = opening_line(self.ctx)
+        line = (
+            inbound_opening_line(self.ctx)
+            if self.direction == "inbound"
+            else opening_line(self.ctx)
+        )
         self._say(line)
         self.ctx.done.add("greeting")
         return SessionEvent(say=line)

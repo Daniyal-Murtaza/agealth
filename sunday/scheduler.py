@@ -36,3 +36,22 @@ def is_due(
 
 def due_parents(repo: Repository, *, now: datetime | None = None) -> list[Parent]:
     return [p for p in repo.list_parents() if is_due(p, repo, now=now)]
+
+
+DIGEST_DAY = 6  # Sunday
+DIGEST_HOUR = 18  # local; the window is the whole evening so one cron tick is enough
+
+
+def digest_due(parent: Parent, *, now: datetime | None = None) -> bool:
+    """Sunday evening, local time, and we have not sent this week's report yet."""
+    if not parent.active:
+        return False
+    local = parent.local_now(now or datetime.now(UTC))
+    if local.weekday() != DIGEST_DAY or not (DIGEST_HOUR <= local.hour < 22):
+        return False
+    last = parent.last_digest_at
+    return last is None or (local - last.astimezone(local.tzinfo)) > timedelta(days=6)
+
+
+def digest_due_parents(repo: Repository, *, now: datetime | None = None) -> list[Parent]:
+    return [p for p in repo.list_parents() if digest_due(p, now=now)]

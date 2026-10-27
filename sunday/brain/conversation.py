@@ -61,6 +61,16 @@ DEFAULT_PLAN: tuple[PlanItem, ...] = (
     "close",
 )
 
+# When the parent rings us (lonely at 2am, a question, or just to talk) we do not run the
+# morning survey. Hear why they called, pass on anything waiting, and talk.
+INBOUND_PLAN: tuple[PlanItem, ...] = (
+    "greeting",
+    "wellbeing",
+    "family_messages",
+    "open_talk",
+    "close",
+)
+
 LANGUAGE_NAMES = {
     "en": "English",
     "ur": "Urdu",
@@ -210,6 +220,18 @@ def build_system_prompt(ctx: CallContext, *, max_minutes: int, emergency_number:
         ),
         minutes=ctx.minutes_elapsed(),
     )
+
+
+def inbound_opening_line(ctx: CallContext) -> str:
+    """The parent rang Sunday. Fixed, honest, and glad to hear from them."""
+    me = ctx.parent.address()
+    lines = {
+        "en": f"Hello {me}, it's Sunday. How lovely that you called. How are you?",
+        "ur": f"السلام علیکم {me}، میں سنڈے ہوں۔ آپ نے فون کیا، بہت اچھا لگا۔ آپ کیسی ہیں؟",
+        "hi": f"नमस्ते {me}, मैं सनडे हूँ। आपने फ़ोन किया, बहुत अच्छा लगा। आप कैसी हैं?",
+        "pa": f"ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ {me}, ਮੈਂ ਸੰਡੇ ਹਾਂ। ਤੁਸੀਂ ਫ਼ੋਨ ਕੀਤਾ, ਬਹੁਤ ਚੰਗਾ ਲੱਗਿਆ। ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?",
+    }
+    return lines.get(ctx.parent.language, lines["en"])
 
 
 def opening_line(ctx: CallContext) -> str:

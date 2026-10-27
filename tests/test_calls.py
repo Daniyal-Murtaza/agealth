@@ -302,3 +302,56 @@ def test_today_alert_changes_the_closing_line(world):
     )
     assert sim.ended
     assert "you're well" not in sim.said[-1] and "how you're doing today" in sim.said[-1]
+
+
+def test_inbound_call_skips_the_survey_and_still_passes_messages(world):
+    repo, parent, settings = world
+    msg_id = repo.undelivered_messages(parent.id)[0].id
+    model = ScriptedChat(
+        script=[
+            progress(["wellbeing"]),
+            "Oh, Hira says she'll call Thursday after work. Is everything alright?",
+            progress(["family_messages", "open_talk"], [msg_id]),
+        ]
+    )
+    session = CallSession(repo, model, settings, parent, direction="inbound")
+    sim = Simulator(session).run_scripted(["I couldn't sleep, just wanted to talk", "yes fine"])
+    assert sim.said[0] == "Hello Amma, it's Sunday. How lovely that you called. How are you?"
+    assert list(session.ctx.plan) == [
+        "greeting",
+        "wellbeing",
+        "family_messages",
+        "open_talk",
+        "close",
+    ]
+    assert sim.ended and "lovely talking" in sim.said[-1]
+    call = repo.get_call(session.call.id)
+    assert call.direction == "inbound" and call.status == "completed"
+    assert session.ctx.delivered_message_ids == {msg_id}
+
+
+def test_dated_reminder_is_only_in_the_prompt_on_its_day(world):
+    from datetime import timedelta
+
+    repo, parent, settings = world
+    repo.queue_message(
+        parent.id,
+        from_name="Daniyal",
+        text="Appointment with Dr Khan at 10.",
+        kind="remind",
+        remind_on=parent.local_today() + timedelta(days=2),
+    )
+    today = CallSession(repo, ScriptedChat(script=[]), settings, parent)
+    assert [m.from_name for m in today.ctx.queued] == ["Hira"]  # the appointment waits
+    repo.queue_message(
+        parent.id,
+        from_name="Daniyal",
+        text="Take your umbrella, rain today.",
+        kind="remind",
+        remind_on=parent.local_today(),
+    )
+    now = CallSession(repo, ScriptedChat(script=[]), settings, parent)
+    assert sorted(m.text for m in now.ctx.queued) == [
+        "I'll call Thursday after work.",
+        "Take your umbrella, rain today.",
+    ]

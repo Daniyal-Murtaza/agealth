@@ -23,10 +23,10 @@ this never leaves the operator's machine unless they choose to deploy it.
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 CallStatus = Literal["scheduled", "in_progress", "completed", "no_answer", "failed", "cancelled"]
@@ -78,6 +78,7 @@ class Parent(Base):
     introduced_by: Mapped[str] = mapped_column(String, default="")  # "your daughter Hira"
     consent_recording: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_digest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     family: Mapped[list[FamilyMember]] = relationship(
@@ -93,6 +94,18 @@ class Parent(Base):
 
     def address(self) -> str:
         return self.preferred_name or self.name.split()[0]
+
+    def local_now(self, at: datetime | None = None) -> datetime:
+        from zoneinfo import ZoneInfo
+
+        at = at or datetime.now(UTC)
+        try:
+            return at.astimezone(ZoneInfo(self.timezone or "UTC"))
+        except Exception:  # noqa: BLE001 - a bad tz string must not break a call
+            return at
+
+    def local_today(self) -> date:
+        return self.local_now().date()
 
 
 class FamilyMember(Base):
@@ -193,6 +206,9 @@ class QueuedMessage(Base):
     from_name: Mapped[str] = mapped_column(String, nullable=False)
     kind: Mapped[str] = mapped_column(String, default="say")  # say | ask | remind
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Say it on or after this local date (the appointment is Tuesday: remind on Monday and
+    # Tuesday, not today). None means the next call.
+    remind_on: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     delivered_call_id: Mapped[str] = mapped_column(String, default="")
     response: Mapped[str] = mapped_column(Text, default="")  # what the parent said back
