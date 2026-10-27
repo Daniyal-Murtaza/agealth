@@ -1,9 +1,0 @@
-.venv
-.git
-.pytest_cache
-.ruff_cache
-data
-docs
-tests
-*.sqlite
-.env
