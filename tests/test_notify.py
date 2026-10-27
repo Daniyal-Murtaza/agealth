@@ -327,3 +327,51 @@ def test_quiet_week_digest(world):
     repo.add_observations(c.id, parent.id, [{"kind": "medication", "text": "x", "value": "taken"}])
     text = format_digest(parent, compute_trends(repo, parent))
     assert "Nothing worrying this week." in text and "1 bright" in text
+
+
+def test_services_send_urgent_alert_while_the_call_is_still_going(world):
+    from sunday.app import Services
+    from sunday.calls.dialer import FakeTelephony
+
+    repo, parent, settings = world
+    messenger = ConsoleMessenger(echo=False)
+    svc = Services(
+        settings=settings,
+        repo=repo,
+        model=ScriptedChat(
+            script=[json.dumps({"summary": "Fall reported.", "mood": "low", "alerts": []})]
+        ),
+        messenger=messenger,
+        telephony=FakeTelephony(),
+    )
+    session = svc.new_session(parent)
+    assert session.emergency_number == "911"  # fixture parent is a +1 number
+    session.start()
+    session.hear("I fell in the bathroom")
+    # The call has not ended and finish_call has not run, yet both family members have it.
+    assert sorted(n for n, _ in messenger.sent) == ["Daniyal", "Hira"]
+    assert all(t.startswith("URGENT - Sunday about Amma") for _, t in messenger.sent)
+    assert repo.unnotified_alerts(parent.id) == []
+    session.hear("my hip")
+    assert len(messenger.sent) == 2  # not re-sent on later turns
+    session.hangup()
+    svc.complete(session)
+    urgent = [t for _, t in messenger.sent if t.startswith("URGENT")]
+    assert len(urgent) == 2  # finish_call did not send the same alert again
+
+
+def test_digest_leads_with_alerts(world):
+    repo, parent, _ = world
+    c = repo.create_call(
+        parent.id, status="completed", started_at=datetime.now(UTC), ended_at=datetime.now(UTC)
+    )
+    repo.add_alert(parent.id, call_id=c.id, tier="now", kind="fall", text="Amma said they fell.")
+    repo.add_alert(parent.id, call_id=c.id, tier="today", kind="pain", text="Pain.")
+    repo.add_alert(parent.id, call_id=c.id, tier="today", kind="no_food", text="No food.")
+    t = compute_trends(repo, parent, days=7)
+    assert t.alerts_now == 1 and t.alerts_today == 2
+    text = format_digest(parent, t)
+    assert "Nothing worrying" not in text
+    assert "Alerts: 1 urgent, 2 check-today." in text
+    assert "URGENT on" in text and "Amma said they fell." in text
+    assert "2 'check today' alerts: pain, no food." in text

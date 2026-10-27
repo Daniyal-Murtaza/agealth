@@ -159,6 +159,17 @@ _TODAY: dict[str, list[str]] = {
 _COMPILED_NOW = {k: [re.compile(p, re.IGNORECASE) for p in v] for k, v in _NOW.items()}
 _COMPILED_TODAY = {k: [re.compile(p, re.IGNORECASE) for p in v] for k, v in _TODAY.items()}
 
+# ``today`` kinds that are not a worry when the parent says it is about to be dealt with.
+# "Haven't eaten yet, I'll make something later" at nine in the morning is breakfast, not
+# an alert. "Haven't eaten since yesterday" still is.
+_SOFTENERS: dict[str, re.Pattern[str]] = {
+    "no_food": re.compile(
+        r"\b(yet|later|about to|going to|will (make|eat|have|cook)|i'?ll (make|eat|have|cook)|"
+        r"abhi|baad mein|thodi der)\b",
+        re.IGNORECASE,
+    ),
+}
+
 
 def keyword_signals(text: str) -> list[Signal]:
     """Deterministic triggers. Highest tier first; one signal per kind."""
@@ -169,7 +180,13 @@ def keyword_signals(text: str) -> list[Signal]:
             if m:
                 out.append(Signal(kind=kind, tier="now", evidence=text.strip()))
                 break
+    negated = looks_negated(text)
     for kind, patterns in _COMPILED_TODAY.items():
+        if negated and kind in ("pain", "unwell"):
+            continue
+        soft = _SOFTENERS.get(kind)
+        if soft is not None and soft.search(text):
+            continue
         for p in patterns:
             m = p.search(text)
             if m:
@@ -178,16 +195,13 @@ def keyword_signals(text: str) -> list[Signal]:
     return out
 
 
-_NEGATED = re.compile(
-    r"\b(no|not|never|didn'?t|haven'?t|nahi|nahin|نہیں|नहीं)\b.{0,25}$", re.IGNORECASE
-)
-
-
-def looks_negated(text: str, evidence_span_end: int | None = None) -> bool:
-    """Crude check used to soften ``today`` signals like "no pain today"."""
+def looks_negated(text: str) -> bool:
+    """ "No pain today", "didn't have any fever": the ``today`` triggers for pain and illness
+    should stay quiet. Deliberately narrow; a ``now`` signal is never softened."""
     return bool(
         re.search(
-            r"\b(no|not|never|didn'?t|haven'?t|without)\s+(any\s+)?(pain|fever|fall)",
+            r"\b(no|not|never|didn'?t|haven'?t|without|hardly any)\s+(any\s+|much\s+)?"
+            r"(pain|fever|dizz|vomit|bukhar|dard)",
             text,
             re.IGNORECASE,
         )
@@ -244,3 +258,22 @@ EMERGENCY_LINES = {
 }
 
 EMERGENCY_NUMBERS = {"US": "911", "GB": "999", "PK": "1122", "IN": "112", "CA": "911", "AU": "000"}
+
+# E.164 country calling code -> country. US and Canada share +1 and share 911.
+_CALLING_CODES = {"1": "US", "44": "GB", "92": "PK", "91": "IN", "61": "AU"}
+
+
+def country_from_phone(phone: str | None) -> str | None:
+    """Best-effort country from a +E.164 number, so a parent in Karachi is told 1122, not 911."""
+    digits = re.sub(r"\D", "", phone or "")
+    if not (phone or "").strip().startswith("+") or not digits:
+        return None
+    for length in (3, 2, 1):
+        country = _CALLING_CODES.get(digits[:length])
+        if country:
+            return country
+    return None
+
+
+def emergency_number_for(phone: str | None, *, default: str = "911") -> str:
+    return EMERGENCY_NUMBERS.get(country_from_phone(phone) or "", default)

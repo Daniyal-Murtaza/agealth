@@ -19,6 +19,7 @@ unavailable it falls back to a fixed, safe line and ends the call politely.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -30,10 +31,16 @@ from sunday.brain.conversation import (
     update_progress,
 )
 from sunday.brain.model import ChatModel, ModelError
-from sunday.brain.safety import EMERGENCY_LINES, EMERGENCY_NUMBERS, SafetyState, keyword_signals
+from sunday.brain.safety import (
+    EMERGENCY_LINES,
+    EMERGENCY_NUMBERS,
+    SafetyState,
+    emergency_number_for,
+    keyword_signals,
+)
 from sunday.config import Settings
 from sunday.logging_setup import get_logger
-from sunday.models import Call, Parent
+from sunday.models import Alert, Call, Parent
 from sunday.repository import Repository
 
 log = get_logger("calls.session")
@@ -57,6 +64,18 @@ CLOSING_LINES = {
         "کل بات ہوگی۔"
     ),
     "hi": ("{name}, आपसे बात करके बहुत अच्छा लगा। मैं घरवालों को बता दूँगी कि आप ठीक हैं। कल बात होगी।"),
+}
+# Used instead when something was flagged this call: do not tell them "you're well".
+CLOSING_LINES_CONCERN = {
+    "en": (
+        "It was lovely talking to you, {name}. I'll let the family know how you're doing today. "
+        "Speak tomorrow."
+    ),
+    "ur": (
+        "{name}، آپ سے بات کر کے بہت اچھا لگا۔ میں گھر والوں کو بتا دوں گی کہ آج آپ کیسی ہیں۔ "
+        "کل بات ہوگی۔"
+    ),
+    "hi": ("{name}, आपसे बात करके बहुत अच्छा लगा। मैं घरवालों को बताऊँगी कि आज आप कैसी हैं। कल बात होगी।"),
 }
 FALLBACK_LINES = {
     "en": (
@@ -90,12 +109,14 @@ class CallSession:
         parent: Parent,
         *,
         call: Call | None = None,
-        country: str = "US",
+        country: str | None = None,
+        on_alert: Callable[[Alert], None] | None = None,
     ) -> None:
         self.repo = repo
         self.model = model
         self.settings = settings
         self.parent = parent
+        self.on_alert = on_alert
         self.call = call or repo.create_call(
             parent.id, status="in_progress", started_at=datetime.now(UTC)
         )
@@ -103,7 +124,9 @@ class CallSession:
         self.transcript: list[tuple[str, str]] = []
         self.safety = SafetyState()
         self.emergency_step = 0
-        self.emergency_number = EMERGENCY_NUMBERS.get(country, "911")
+        self.emergency_number = (
+            EMERGENCY_NUMBERS.get(country, "911") if country else emergency_number_for(parent.phone)
+        )
         self.ctx = CallContext(
             parent=parent,
             memories=repo.memories_for(parent.id),
@@ -185,9 +208,8 @@ class CallSession:
         )
 
     def _close(self, alerts: list[str]) -> SessionEvent:
-        line = CLOSING_LINES.get(self.parent.language, CLOSING_LINES["en"]).format(
-            name=self.parent.address()
-        )
+        lines = CLOSING_LINES_CONCERN if self.safety.signals else CLOSING_LINES
+        line = lines.get(self.parent.language, lines["en"]).format(name=self.parent.address())
         return self._end(line, reason="completed", alerts=alerts)
 
     def _end(self, line: str, *, reason: str, alerts: list[str]) -> SessionEvent:
@@ -211,7 +233,10 @@ class CallSession:
         return SessionEvent(say=line, emergency=True, alerts_raised=alerts)
 
     def _raise_alert(self, signal) -> str:
-        """Persist an alert the moment a signal fires; the family is told right away."""
+        """Persist an alert the moment a signal fires. A ``now`` alert is also handed to
+        ``on_alert`` immediately, so the family is told while the call is still going; the
+        emergency script never hangs up, so waiting for the end of the call would be waiting
+        for the parent on the floor to hang up. ``today`` alerts go out with the summary."""
         from sunday.brain.analysis import _signal_text
 
         alert = self.repo.add_alert(
@@ -223,4 +248,9 @@ class CallSession:
             evidence=signal.evidence,
         )
         log.warning("alert %s/%s raised during call %s", signal.tier, signal.kind, self.call.id)
+        if signal.tier == "now" and self.on_alert is not None:
+            try:
+                self.on_alert(alert)
+            except Exception as exc:  # noqa: BLE001 - the call must go on even if sending fails
+                log.error("sending urgent alert %s failed: %s", alert.id, exc)
         return alert.id

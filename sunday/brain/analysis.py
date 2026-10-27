@@ -15,6 +15,7 @@ Everything cites the parent's words. Nothing is reported that was not said.
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -62,6 +63,27 @@ def _looks_household(text: str) -> bool:
     return any(w in low for w in _HOUSEHOLD) and not any(
         w in low for w in ("no water", "no heating", "no electricity", "locked out", "gas")
     )
+
+
+_TRADES = re.compile(
+    r"\b(plumber|electrician|gardener|cleaner|handyman|mechanic|delivery|parcel|courier|repair)",
+    re.IGNORECASE,
+)
+_UNRESOLVED = re.compile(
+    r"\b(hasn'?t|haven'?t|didn'?t|not|never|still|waiting|yet|nahi|abhi tak)\b", re.IGNORECASE
+)
+
+
+def _pending_household_lines(transcript: str) -> list[str]:
+    """Parent lines about a tradesperson or delivery that still has not happened."""
+    out = []
+    for raw in transcript.splitlines():
+        if not raw.lower().startswith("parent:"):
+            continue
+        line = raw.split(":", 1)[1].strip()
+        if _TRADES.search(line) and _UNRESOLVED.search(line):
+            out.append(line)
+    return out
 
 
 class ObservationOut(BaseModel):
@@ -127,9 +149,11 @@ older person, and write notes for their family. Rules:
   (no heating, no water, locked out). Household chores, deliveries and tradespeople are
   observations with follow_up=true, NOT alerts. A knee that is "bothering" them a little is an
   observation; "severe pain" or "couldn't walk" is an alert. No alert for ordinary days.
-- Memories: durable facts worth knowing on future calls (names, routines, preferences, health
-  background). Not today's weather.
-- follow_up=true for things tomorrow's call should ask about ("did the plumber come").
+- Memories: durable facts still true next month (names, routines, preferences, health
+  background). Not today's weather, and not pending chores or deliveries; those are
+  observations with follow_up=true.
+- follow_up=true for things tomorrow's call should ask about ("did the plumber come"). A reply
+  to a family message is NOT a follow-up; it goes in message_replies.
 - For each family message id listed, record what the parent replied, if anything.
 Medications asked about: {meds}
 Family messages delivered this call: {messages}
@@ -195,6 +219,26 @@ def analyse_call(
         else:
             kept.append(a)
     analysis.alerts = kept
+
+    # Code guard: tomorrow's call should ask about unfinished household matters, and should
+    # not re-ask something that was a reply to a family message.
+    replies = [" ".join(r.response.lower().split()) for r in analysis.message_replies if r.response]
+    for o in analysis.observations:
+        ev = " ".join(o.evidence.lower().split())
+        if o.kind == "household":
+            o.follow_up = True
+        elif o.follow_up and ev and any(ev in r or r in ev for r in replies):
+            o.follow_up = False
+    # The model sometimes forgets the plumber altogether. If the parent said a tradesperson or
+    # delivery still has not come and nothing recorded it, record it from their own words.
+    evidences = [" ".join(o.evidence.lower().split()) for o in analysis.observations if o.evidence]
+    for line in _pending_household_lines(transcript):
+        low = " ".join(line.lower().split())
+        if any(ev in low or low in ev for ev in evidences):
+            continue
+        analysis.observations.append(
+            ObservationOut(kind="household", text=line.rstrip("."), evidence=line, follow_up=True)
+        )
 
     # Code-detected signals always win and are never downgraded.
     existing = {(a.kind, a.tier) for a in analysis.alerts}

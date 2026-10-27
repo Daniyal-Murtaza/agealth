@@ -10,7 +10,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sunday.models import Call, Observation, Parent
+from sunday.models import Alert, Call, Observation, Parent
 from sunday.repository import Repository
 
 
@@ -28,6 +28,8 @@ class Trends:
     lonely_mentions: int = 0
     confusion_mentions: int = 0
     mood_counts: Counter = field(default_factory=Counter)
+    alerts_now: int = 0
+    alerts_today: int = 0
     open_follow_ups: list[str] = field(default_factory=list)
     worth_a_look: list[str] = field(default_factory=list)
 
@@ -64,6 +66,22 @@ def compute_trends(repo: Repository, parent: Parent, *, days: int = 7) -> Trends
     t.open_follow_ups = [o.text for o in repo.pending_follow_ups(parent.id, days=days)][-5:]
 
     who = parent.address()
+    # Alerts raised this week come first. A fall on Tuesday is the headline of the week,
+    # whatever the medication count says.
+    alerts: list[Alert] = repo.alerts_since(parent.id, days=days)
+    for a in alerts:
+        if a.tier == "now":
+            t.alerts_now += 1
+            t.worth_a_look.append(f"URGENT on {a.at:%A}: {a.text}")
+    today_alerts = [a for a in alerts if a.tier == "today"]
+    t.alerts_today = len(today_alerts)
+    if today_alerts:
+        kinds = Counter(a.kind.replace("_", " ") for a in today_alerts)
+        detail = ", ".join(f"{k} x{n}" if n > 1 else k for k, n in kinds.most_common())
+        t.worth_a_look.append(
+            f"{len(today_alerts)} 'check today' alert{'s' if len(today_alerts) > 1 else ''}: "
+            f"{detail}."
+        )
     if t.medication_missed >= 2:
         t.worth_a_look.append(f"{who} missed medication {t.medication_missed} times this week.")
     if t.sleep_poor_days >= 3:
@@ -84,6 +102,8 @@ def format_digest(parent: Parent, t: Trends) -> str:
     who = parent.address()
     lines = [f"Sunday - {who}'s week", ""]
     lines.append(f"Calls: {t.calls_completed} answered, {t.calls_missed} missed.")
+    if t.alerts_now or t.alerts_today:
+        lines.append(f"Alerts: {t.alerts_now} urgent, {t.alerts_today} check-today.")
     if t.medication_taken + t.medication_missed + t.medication_unclear:
         lines.append(
             f"Medication: taken {t.medication_taken}, missed {t.medication_missed}"

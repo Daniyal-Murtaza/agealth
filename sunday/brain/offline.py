@@ -51,7 +51,8 @@ class OfflineChat:
 
     def _next_line(self, system: str, messages: Sequence[Message]) -> str:
         remaining = _between(system, "Plan for this call:", "\n")
-        covered = _between(system, "Already covered:", "\n")
+        covered = _between(system, "Already covered", "\n")
+        covered = covered.split(":", 1)[1].strip() if ":" in covered else ""
         done = {x.strip() for x in covered.split(",")} if covered else set()
         queued = _between(system, "Messages from the family to pass on this call", "Plan for")
         ack = _ACKS[self._ack % len(_ACKS)]

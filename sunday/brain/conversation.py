@@ -111,14 +111,18 @@ How to speak:
 - Pick up on what they say. If they mention a grandchild, a neighbour, the garden, ask about it.
 - Follow the plan loosely; weave the items into natural talk, do not interrogate. Ask about
   each plan item ONCE; if they already answered (e.g. they said how they slept), do not ask again.
+- Never ask a confirmation question about something they just told you. If they say "I took
+  it", do not ask "did you take it this morning?"; acknowledge it and move on.
 - Only promise to pass something on when it is a reply to a family message or something the
   family should know. Never say "I will tell Farida" or similar about people outside the family.
 - Family messages marked ASK are questions you must actually put to them and get an answer to.
   Never claim you have told the family something they have not yet answered.
 
 Hard rules:
-- NEVER give medical advice, dosages, or diagnoses. If something sounds wrong, show concern and
-  say you will let the family know, and that the doctor is the right person to ask.
+- NEVER give medical advice, dosages, or diagnoses. Do not ask diagnostic questions (is it
+  swollen, is it red, do you have a temperature). If something sounds wrong, show concern, ask
+  how they are managing and whether someone can look at it, and say you will let the family
+  know; the doctor is the right person to ask.
 - NEVER ask for money, bank details, cards, PINs, passwords or codes, and if they mention anyone
   asking for those, tell them plainly: that is a scam, hang up on such calls, and the family
   will be told.
@@ -140,7 +144,7 @@ Deliver these early, right after asking how they are; do not leave them to the e
 {queued}
 
 Plan for this call: {plan}
-Already covered: {done}
+Already covered (do NOT ask about these again): {done}
 {ask_nudge}
 Minutes so far: {minutes:.0f}
 
@@ -297,7 +301,8 @@ family messages have been passed on.
 - An item is covered when the parent has given the information, whether or not Sunday asked for
   it directly. "slept a bit late" covers sleep; "took it with my chai" covers medication;
   "paratha and chai" covers meals. Do not make Sunday ask again for something already said.
-- A "Tell them" message counts as delivered when Sunday has said its content to the parent.
+- A "Tell them" message counts as delivered only when Sunday has said its actual content to
+  the parent. Sunday saying "I'll let Hira know" does NOT deliver Hira's message.
 - An "ASK them" message counts as delivered ONLY when Sunday asked that exact question AND the
   parent answered it. Sunday mentioning the topic in passing does not count.
 - "family_messages" is covered only when every listed message is delivered.
@@ -330,10 +335,39 @@ def update_progress(model: ChatModel, ctx: CallContext, transcript: list[tuple[s
     for item in result.covered:
         if item in ctx.plan:
             ctx.done.add(item)
+    sunday_turns = [t for sp, t in transcript if sp == "sunday"]
     for mid in result.delivered_messages:
-        if any(m.id == mid for m in ctx.queued):
+        msg = next((m for m in ctx.queued if m.id == mid), None)
+        # Code gate: the model marks "I'll let Hira know" as delivering Hira's message. A
+        # message is delivered only if Sunday actually said its content to the parent.
+        if msg is not None and message_was_said(msg.text, sunday_turns):
             ctx.delivered_message_ids.add(mid)
     if result.parent_sounds_tired_or_wants_to_stop:
         ctx.done.update(p for p in ctx.plan if p != "close")
     if ctx.pending_asks():
         ctx.done.discard("family_messages")  # code gate: an open ASK keeps the call going
+
+
+_STOP = frozenset(
+    {
+        "the", "and", "that", "this", "with", "from", "your", "they", "them", "their", "will",
+        "would", "could", "should", "have", "about", "after", "before", "been", "being", "were",
+        "what", "when", "where", "which", "while", "there", "here", "into", "over", "then",
+        "than", "just", "also", "very", "really", "please", "tell", "does", "want",
+    }
+)  # fmt: skip
+
+
+def _content_words(text: str) -> set[str]:
+    return {w for w in re.findall(r"\w+", text.lower()) if len(w) >= 4 and w not in _STOP}
+
+
+def message_was_said(message: str, sunday_turns: list[str]) -> bool:
+    """Did Sunday actually say this family message to the parent? At least half of the
+    message's content words must appear in one of Sunday's turns. "I'll call Thursday after
+    work" is not delivered by "I'll let Hira know"; it is by "Hira says she'll call Thursday"."""
+    words = _content_words(message)
+    if not words:
+        return bool(sunday_turns)
+    need = max(1, (len(words) + 1) // 2)
+    return any(len(words & _content_words(t)) >= need for t in sunday_turns)

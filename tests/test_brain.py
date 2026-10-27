@@ -122,7 +122,7 @@ def test_system_prompt_contains_context_and_rules():
         "NEVER give medical advice",
         "NEVER ask for money",
         "911",
-        "Already covered: greeting",
+        "Already covered (do NOT ask about these again): greeting",
         "ONE question at a time",
     ):
         assert needle in p, needle
@@ -162,10 +162,39 @@ def test_update_progress_marks_items_and_messages():
         ]
     )
     update_progress(
-        model, ctx, [("sunday", "How are you?"), ("parent", "Fine. Hira called? Good.")]
+        model,
+        ctx,
+        [
+            ("sunday", "How are you? Hira says she'll call Thursday after work."),
+            ("parent", "Fine. Hira called? Good."),
+        ],
     )
     assert ctx.done == {"greeting", "wellbeing"} and ctx.delivered_message_ids == {"msg_1"}
     assert "greeting" not in ctx.remaining()
+
+
+def test_message_not_delivered_unless_sunday_actually_said_it():
+    from sunday.brain.conversation import message_was_said
+
+    msg = "I'll call Thursday after work."
+    assert not message_was_said(msg, ["I'll let Hira know that after eight is better for you."])
+    assert message_was_said(msg, ["Hira asked me to tell you: I'll call Thursday after work."])
+    assert message_was_said(msg, ["Hira says she will call you on Thursday after her work."])
+    ask = "Do you want a lift to the clinic on Tuesday?"
+    assert not message_was_said(ask, ["How is the clinic going?"])
+    assert message_was_said(ask, ["Amma, do you want a lift to the clinic on Tuesday?"])
+
+    # The model says msg_1 was delivered; Sunday only promised to pass something on.
+    ctx = _ctx()
+    model = ScriptedChat(
+        script=[json.dumps({"covered": ["wellbeing"], "delivered_messages": ["msg_1"]})]
+    )
+    update_progress(
+        model,
+        ctx,
+        [("sunday", "I'll let Hira know after eight is better."), ("parent", "Yes, tell her.")],
+    )
+    assert ctx.delivered_message_ids == set()
 
 
 def test_update_progress_tired_parent_skips_to_close():
@@ -429,3 +458,105 @@ def test_open_ask_keeps_family_messages_uncovered_even_when_tired():
     assert "the family is waiting for an answer to: Does she want a lift" in prompt
     ctx.delivered_message_ids.add("msg_2")
     assert ctx.pending_asks() == []
+
+
+def test_today_triggers_soften_when_food_is_coming_or_pain_is_denied():
+    from sunday.brain.safety import country_from_phone, emergency_number_for
+
+    # Breakfast is on the way: not a no-food alert.
+    assert keyword_signals("Haven't eaten yet, I'll make something later") == []
+    assert keyword_signals("khana nahi khaya abhi, thodi der mein") == []
+    # Still an alert when nothing is coming.
+    assert [s.kind for s in keyword_signals("I haven't eaten since yesterday")] == ["no_food"]
+    # Denials stay quiet; a now-tier phrase is never softened.
+    assert keyword_signals("No pain today, I didn't have any fever either") == []
+    assert [s.tier for s in keyword_signals("no pain but I fell")] == ["now"]
+
+    assert country_from_phone("+923001234567") == "PK"
+    assert country_from_phone("+1 555 123 4567") == "US"
+    assert country_from_phone("+447700900000") == "GB"
+    assert country_from_phone("03001234567") is None  # not E.164: unknown
+    assert emergency_number_for("+923001234567") == "1122"
+    assert emergency_number_for("+919876543210") == "112"
+    assert emergency_number_for("+15551234567") == "911"
+    assert emergency_number_for(None) == "911"
+
+
+def test_household_is_always_a_follow_up_and_replies_never_are():
+    reply = json.dumps(
+        {
+            "summary": "Fine.",
+            "mood": "ok",
+            "observations": [
+                {
+                    "kind": "household",
+                    "text": "plumber has not come, tap dripping",
+                    "evidence": "the plumber still hasn't come, the tap is dripping",
+                    "follow_up": False,
+                },
+                {
+                    "kind": "plan",
+                    "text": "will take the lift on Tuesday after eleven",
+                    "evidence": "Yes, I'll take the lift, after eleven though",
+                    "follow_up": True,
+                },
+            ],
+            "message_replies": [
+                {"message_id": "msg_1", "response": "Yes, I'll take the lift, after eleven though"}
+            ],
+        }
+    )
+    transcript = (
+        "parent: the plumber still hasn't come, the tap is dripping\n"
+        "parent: Yes, I'll take the lift, after eleven though"
+    )
+    a = analyse_call(
+        ScriptedChat(script=[reply]),
+        _parent(),
+        transcript,
+        delivered_messages=[("msg_1", "Lift on Tuesday?")],
+        signals=[],
+    )
+    flags = {o.kind: o.follow_up for o in a.observations}
+    assert flags == {"household": True, "plan": False}
+
+
+def test_forgotten_plumber_is_recorded_from_the_parents_words():
+    # The model wrote a summary but no observation about the plumber: tomorrow must still ask.
+    reply = json.dumps(
+        {
+            "summary": "Fine. Plumber still not here.",
+            "mood": "ok",
+            "observations": [
+                {"kind": "medication", "text": "took it", "value": "taken", "evidence": "took it"}
+            ],
+        }
+    )
+    transcript = (
+        "sunday: How are you?\nparent: took it with chai\n"
+        "parent: The plumber still hasn't come, third day now, the tap is dripping\n"
+        "parent: the delivery came this morning, lovely"
+    )
+    a = analyse_call(
+        ScriptedChat(script=[reply]), _parent(), transcript, delivered_messages=[], signals=[]
+    )
+    household = [o for o in a.observations if o.kind == "household"]
+    assert len(household) == 1 and household[0].follow_up
+    assert household[0].evidence.startswith("The plumber still hasn't come")
+    # Nothing is added when the model already recorded it.
+    reply2 = json.loads(reply)
+    reply2["observations"].append(
+        {
+            "kind": "household",
+            "text": "plumber not come",
+            "evidence": "The plumber still hasn't come, third day now, the tap is dripping",
+        }
+    )
+    a2 = analyse_call(
+        ScriptedChat(script=[json.dumps(reply2)]),
+        _parent(),
+        transcript,
+        delivered_messages=[],
+        signals=[],
+    )
+    assert len([o for o in a2.observations if o.kind == "household"]) == 1

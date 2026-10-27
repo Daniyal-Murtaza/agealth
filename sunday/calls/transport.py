@@ -89,7 +89,8 @@ class Simulator:
             if ev.say:
                 show(ev.say)
             if ev.emergency and note is not None:
-                note("emergency mode: alerts sent to the family, staying on the line")
+                sent = "alerts sent to the family" if ev.alerts_raised else "family already alerted"
+                note(f"emergency mode: {sent}, staying on the line")
         return self.result
 
 

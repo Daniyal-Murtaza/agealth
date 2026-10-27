@@ -63,10 +63,17 @@ def format_summary(parent: Parent, call: Call, analysis: CallAnalysis) -> str:
 
 
 def _deliver_alerts(
-    repo: Repository, parent: Parent, family: list[FamilyMember], messenger: Messenger
+    repo: Repository,
+    parent: Parent,
+    family: list[FamilyMember],
+    messenger: Messenger,
+    *,
+    only_tier: str | None = None,
 ) -> int:
     sent = 0
     for alert in repo.unnotified_alerts(parent.id):
+        if only_tier is not None and alert.tier != only_tier:
+            continue
         text = format_alert(parent, alert)
         for member in family:
             if wants(member, alert.tier):
@@ -77,6 +84,15 @@ def _deliver_alerts(
                     log.error("alert to %s failed: %s", member.name, exc)
         repo.mark_alert_notified(alert.id)
     return sent
+
+
+def notify_urgent(repo: Repository, messenger: Messenger, parent_id: str) -> int:
+    """Send pending ``now`` alerts immediately. Called from inside a live call the moment a
+    trigger fires; nothing slow (no model) happens on this path."""
+    parent = repo.get_parent(parent_id)
+    if parent is None:
+        return 0
+    return _deliver_alerts(repo, parent, repo.family_for(parent_id), messenger, only_tier="now")
 
 
 def finish_call(

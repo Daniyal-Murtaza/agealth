@@ -17,7 +17,7 @@ from sunday.config import Settings, load_settings
 from sunday.logging_setup import configure_logging, get_logger
 from sunday.models import Parent
 from sunday.notify.messenger import ConsoleMessenger, Messenger, TwilioMessenger
-from sunday.notify.pipeline import finish_call
+from sunday.notify.pipeline import finish_call, notify_urgent
 from sunday.repository import Repository
 
 log = get_logger("app")
@@ -73,8 +73,16 @@ class Services:
             settings=settings, repo=repo, model=model, messenger=messenger, telephony=telephony
         )
 
-    def new_session(self, parent: Parent, *, country: str = "US") -> CallSession:
-        return CallSession(self.repo, self.model, self.settings, parent, country=country)
+    def new_session(self, parent: Parent, *, country: str | None = None) -> CallSession:
+        """A live call. ``now`` alerts are sent to the family the moment they fire, from inside
+        the call; everything else waits for :meth:`complete`."""
+
+        def urgent(_alert) -> None:
+            notify_urgent(self.repo, self.messenger, parent.id)
+
+        return CallSession(
+            self.repo, self.model, self.settings, parent, country=country, on_alert=urgent
+        )
 
     def complete(self, session: CallSession) -> None:
         """Run the after-call pipeline for a finished session."""

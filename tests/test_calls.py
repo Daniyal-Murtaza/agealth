@@ -260,3 +260,45 @@ def test_dial_and_no_answer_escalation(world):
     # A completed call is never overwritten by a late status callback.
     repo.update_call(c3, status="completed")
     assert record_outcome(repo, c3, "no-answer") is None
+
+
+def test_now_alert_is_handed_out_during_the_call_and_number_matches_country(world):
+    repo, _, settings = world
+    parent = repo.add_parent(
+        name="Khalida", preferred_name="Ammi", phone="+923001234567", language="en"
+    )
+    seen: list[str] = []
+    model = ScriptedChat(script=[ModelError("should not be called", retryable=False)])
+    session = CallSession(repo, model, settings, parent, on_alert=lambda a: seen.append(a.id))
+    session.start()
+    ev = session.hear("I fell and I can't get up")
+    assert ev.emergency and seen == ev.alerts_raised and len(seen) == 1
+    # Fired once, at the moment the trigger hit, before any further turn.
+    session.hear("my hip hurts")
+    ev = session.hear("still here")
+    assert len(seen) == 1 and "1122" in ev.say  # Karachi number -> 1122, not 911
+    assert session.emergency_number == "1122"
+    assert CallSession(repo, model, settings, parent, country="GB").emergency_number == "999"
+
+
+def test_on_alert_failure_never_breaks_the_call(world):
+    repo, parent, settings = world
+
+    def boom(_alert):
+        raise RuntimeError("twilio down")
+
+    session = CallSession(repo, ScriptedChat(script=[]), settings, parent, on_alert=boom)
+    session.start()
+    ev = session.hear("I fell")
+    assert ev.emergency and "Stay where you are" in ev.say
+    assert len(repo.unnotified_alerts(parent.id)) == 1  # still persisted for finish_call
+
+
+def test_today_alert_changes_the_closing_line(world):
+    repo, parent, settings = world
+    model = ScriptedChat(script=[progress(tired=True)])
+    sim = Simulator(CallSession(repo, model, settings, parent)).run_scripted(
+        ["my knee hurts so much, I'm tired, let's talk tomorrow"]
+    )
+    assert sim.ended
+    assert "you're well" not in sim.said[-1] and "how you're doing today" in sim.said[-1]
