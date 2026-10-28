@@ -16,7 +16,9 @@ are added at the end.
 - **Nothing invented.** Every observation, alert and memory must quote the parent's words; quotes not found in the transcript are dropped. Household chores become follow-ups, never alerts. No medical advice, ever.
 - **They can call it too.** Save the number as "Sunday". A call from the parent's own phone is answered by name, skips the morning survey, passes on anything waiting and just talks.
 - **Set up in five minutes, from the website.** "Start with your parent" creates the household and sends you a sign-in link. You place the introductory call from your page; daily calls begin only after that.
-- **A quiet page for the family.** No password: a one-time link to the phone Sunday already messages. Today's note, the last two weeks at a glance, alerts to acknowledge, what to ask tomorrow, what Sunday knows, medications, who hears what, invite a sibling, export everything.
+- **A dashboard that answers two questions.** Is she okay today, and do I need to do anything? One sentence under your name, then six tiles whose single line already carries the answer: Amma's day, Health, Medication, Appointments, Needs you, Follow-ups. Everything Sunday hears is sorted into them automatically, in her own words. No password: a one-time link to the phone Sunday already messages.
+
+![The family dashboard on a phone](docs/family-page-phone.png)
 - **Recordings, only with consent.** Sunday says "this call is recorded for the family, as you agreed" at the start of every recorded call; the family listens from the call page.
 
 This README is a walkthrough. It assumes you have never seen the product and
@@ -314,9 +316,21 @@ You land on "One tap to continue", which submits itself. (That page exists becau
 
 Step 5. Test that the link is single-use. Paste the same `/auth/...` link again. Expect the sign-in page with "That link has expired or was already used."
 
-Step 6. Walk the page, top to bottom.
+Step 6. The home page. Under "Good morning, Daniyal" is one sentence: how Amma sounded on the last call and whether anything needs you. Then six tiles, each with its own one-line answer computed from the calls:
 
-- **Header.** "Amma", last call and mood, next call time, and "Signed in as Daniyal (son). You get: everything." Next to it, **Call Amma now** (on this copy it leads to a page explaining there is no phone line yet; in Part 8 it rings).
+- **Amma's day**: the first line of today's note. Opens the list of calls and what she ate, who visited, what she did.
+- **Health**: "2 mentions of pain this week" or "Nothing worrying this week". Opens pain, sleep, mood and mobility notes grouped by day, each with her exact words and a link to the call.
+- **Medication**: "Taken today. 7 of the last 7 days." Opens a day-by-day record of taken, missed and unclear.
+- **Appointments**: the next dated reminder. Opens the list and a form to add one; Sunday reminds her on the day.
+- **Needs you**: "Nothing right now" or "1 urgent, 1 to check today". Opens open alerts with "I've seen this", and the ones already seen.
+- **Follow-ups**: what Sunday will ask about tomorrow and what the family has queued.
+
+Below the tiles: the fortnight strip (one square per day, click any to read that call) and three numbers. The bar at the top (bottom on a phone) is Home, Her day, Ask Sunday, Needs you, Settings. **Call Amma now** is in the header; on this copy it explains there is no phone line yet, in Part 8 it rings.
+
+Step 6b. Walk **Settings** (the last tab), top to bottom. This is the long page with every control.
+
+- **Header.** "Amma", last call and mood, next call time, "Signed in as Daniyal (son). You get: everything."
+
 - **Today's note.** The latest call's summary. Click **read the call →** to see the full transcript, "What Sunday noticed" with quotes, and any alerts. Click back.
 - **The last two weeks.** Fourteen squares: green shades for answered calls by mood, a dashed red one for the morning nobody answered, grey for no call. Hover for the date; click a square to open that call. Below: days answered, days medication taken, alerts this week.
 - **For the next call.** Type `Ask if she wants us to come for Eid`, choose **Ask, and get an answer**, click **Add**. It appears in the list with an `ASK` tag and "from Daniyal". Click **Remove** to take it off. Now add a reminder: type `Dr Khan's appointment is at 10 tomorrow`, choose **Remind**, pick a date next week in **Hold until**, click **Add**. It shows "from Sun 02 Nov" (your date): Sunday will not say it before then.
@@ -478,7 +492,7 @@ Every push to `main` redeploys automatically.
 Everything above is also covered by tests that need no keys and no network:
 
 ```bash
-pytest                                   # 90 offline tests, ~3s
+pytest                                   # 92 offline tests, ~3s
 ruff check . && ruff format --check .    # lint / format
 ```
 
@@ -532,7 +546,8 @@ sunday/
     __init__.py     routes: landing, onboarding, sign-in, the family page and its actions, export, Twilio
     auth.py         one-time links over WhatsApp/SMS, signed session cookie, rate limits
     twilio_auth.py  X-Twilio-Signature verification, fail-closed
-    templates/      base, landing, start, login, family, call
+    categories.py   sorts calls into Amma's day / Health / Medication / Appointments / Needs you / Follow-ups
+    templates/      base, landing, start, login, home (dashboard), category, ask, family (settings), call
     static/         one stylesheet, no framework, no web fonts
   scheduler.py      who is due a call now (one retry, never more); whose weekly report is due
   config.py         settings (.env)

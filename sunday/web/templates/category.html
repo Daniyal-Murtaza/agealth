@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ cat.title }} - {{ parent.address() }} - Sunday{% endblock %}
+{% block body %}
+{% include "_appnav.html" %}
+<p class="small"><a href="/app?parent={{ parent.id }}">&larr; Home</a></p>
+<section class="greet compact">
+  <h1>{{ cat.title }}</h1>
+  <p class="headline {{ cat.tone }}">{{ cat.line }}</p>
+  <p class="tiny faint">{{ cat.blurb }}</p>
+</section>
+
+{% if cat.key == 'day' %}
+<div class="card tight" style="margin-bottom:1rem">
+  <ul class="list">
+    {% for c in calls %}
+    <li><div><span class="mood {{ c.mood or 'unclear' }}" style="margin-right:.45rem"></span><a class="row-link" href="/app/{{ parent.id }}/calls/{{ c.id }}">{{ local(c.started_at).strftime('%A %d %b') }}</a>{% if c.direction == 'inbound' %} <span class="pill">called in</span>{% endif %}
+      <div class="small muted">{{ c.summary }}</div></div></li>
+    {% else %}<li class="empty">No calls yet.</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if cat.key == 'appointments' %}
+<form method="post" action="/app/{{ parent.id }}/messages" class="card tight" style="margin-bottom:1rem">
+  <input type="hidden" name="kind" value="remind"><input type="hidden" name="next" value="{{ here }}">
+  <div class="row">
+    <div class="field" style="flex:3 1 220px"><label>Add an appointment</label><input name="text" type="text" maxlength="400" placeholder="Dr Khan at 10, Daniyal will pick you up at 9:30" required></div>
+    <div class="field"><label>Remind her on</label><input name="on" type="date" min="{{ parent.local_today().isoformat() }}" required></div>
+    <div class="field auto"><button class="btn" type="submit">Add</button></div>
+  </div>
+</form>
+{% endif %}
+
+{% if groups %}
+  {% for label, items in groups %}
+  <h3 class="daylabel">{{ label }}</h3>
+  <div class="card tight" style="margin-bottom:1rem">
+    <ul class="list">
+      {% for i in items %}
+      <li>
+        <div>
+          {% if i.tag %}<span class="pill {{ i.tone }}">{{ i.tag }}</span>{% endif %}{{ i.text }}
+          {% if i.quote %}<div class="tiny faint quote">"{{ i.quote }}"</div>{% endif %}
+          {% if i.call_id %}<a class="tiny" href="/app/{{ parent.id }}/calls/{{ i.call_id }}">read the call</a>{% endif %}
+        </div>
+        {% if i.action.startswith('ack:') %}
+          <form method="post" action="/app/{{ parent.id }}/alerts/{{ i.action[4:] }}/ack"><input type="hidden" name="next" value="{{ here }}"><button class="btn quiet" type="submit">I've seen this</button></form>
+        {% elif i.action.startswith('remove:') %}
+          <form method="post" action="/app/{{ parent.id }}/messages/{{ i.action[7:] }}/remove"><input type="hidden" name="next" value="{{ here }}"><button class="btn quiet" type="submit">Remove</button></form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+{% elif cat.key != 'day' %}
+  <div class="card tight"><p class="empty mb0">{{ cat.empty }}</p></div>
+{% endif %}
+{% endblock %}

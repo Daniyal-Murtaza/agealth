@@ -392,8 +392,9 @@ def test_magic_link_login_is_scoped_single_use_and_quiet_about_unknown_numbers(e
     page = client.get("/app")
     assert page.status_code == 200
     assert "Amma" in page.text and "Signed in as Daniyal" in page.text
-    assert "For the next call" in page.text and "call Thursday after work" in page.text
-    assert "Export everything" in page.text
+    more = client.get("/app/more")
+    assert "For the next call" in more.text and "call Thursday after work" in more.text
+    assert "Export everything" in more.text
 
     # Another family's parent is not visible, even by id.
     other = svc.repo.add_parent(name="Someone Else", phone="+1 555 777 0000")
@@ -509,8 +510,9 @@ def test_demo_seeds_a_fortnight_and_the_page_renders_it(env):
     _sign_in(client, messenger, "+1 555 010 0001")
     page = client.get("/app").text
     assert "Amma" in page and "days answered" in page and "Dr Khan" in page
-    assert "Alerts already seen" in page and "called in" not in page
+    assert "called in" not in page
     assert page.count('class="answered') == 13 and 'class="missed' in page
+    assert "Alerts already seen" in client.get("/app/more").text
 
 
 def test_twilio_webhooks_require_a_valid_signature(env):
@@ -739,7 +741,8 @@ def test_invite_sibling_and_edit_medications(env):
     client.post(f"/app/{pid}/medications", data={"add": "eye drops", "when": "night"})
     client.post(f"/app/{pid}/medications", data={"remove": "blood pressure tablet"})
     assert svc.repo.get_parent(pid).medications == [{"name": "eye drops", "when": "night"}]
-    assert "eye drops" in client.get("/app").text
+    assert "eye drops" in client.get("/app/more").text
+    assert "eye drops" in client.get("/app").text  # the Medication tile names them
 
 
 def test_hosted_demo_login_is_off_by_default_and_only_reaches_the_demo_family(env):
@@ -767,3 +770,83 @@ def test_public_url_falls_back_to_render_external_url(monkeypatch):
     assert s.public_url == "https://sunday.onrender.com"
     s = Settings(_env_file=None, SUNDAY_PROVIDER="fake", SUNDAY_PUBLIC_URL="https://x.test")
     assert s.public_url == "https://x.test"
+
+
+def test_dashboard_answers_the_two_questions_and_sorts_into_categories(env):
+    """Is she okay, and do I need to do anything: both answered before any tap."""
+    run(env, ["demo"])
+    svc, messenger, client = _web(env)
+    _sign_in(client, messenger, "+1 555 010 0001")
+    pid = next(p for p in svc.repo.list_parents() if p.preferred_name == "Amma").id
+
+    import html as _html
+
+    home = _html.unescape(client.get("/app").text)
+    assert "Good " in home and "Daniyal" in home  # greeting
+    assert "Amma sounded okay" in home and "Nothing needs you right now." in home
+    for title in ("Amma's day", "Health", "Medication", "Appointments", "Needs you", "Follow-ups"):
+        assert title in home, title
+    # Tile lines carry the answer: computed from the demo data.
+    assert "Taken today." in home or "Not asked yet today." in home
+    assert "Dr Khan" in home and "Nothing right now." in home
+    assert "mention" in home  # health line counts pain this week
+
+    # Each category page opens, groups by day, and quotes her words.
+    for key in ("day", "health", "medication", "appointments", "needs", "followups"):
+        r = client.get(f"/app/{pid}/c/{key}")
+        assert r.status_code == 200, key
+    health = client.get(f"/app/{pid}/c/health").text
+    assert "my knee hurts so much" in health and "read the call" in health
+    meds = client.get(f"/app/{pid}/c/medication").text
+    assert "taken" in meds and "missed" in meds and "Today" in meds
+    appts = client.get(f"/app/{pid}/c/appointments").text
+    assert "Dr Khan" in appts and "Remind her on" in appts
+    assert client.get(f"/app/{pid}/c/nonsense").status_code == 404
+
+    # Actions on a category page return to that page.
+    r = client.post(
+        f"/app/{pid}/messages",
+        data={
+            "text": "Dentist at 3",
+            "kind": "remind",
+            "on": "2030-02-02",
+            "next": f"/app/{pid}/c/appointments",
+        },
+    )
+    assert (
+        r.status_code == 303 and r.headers["location"] == f"/app/{pid}/c/appointments?done=queued"
+    )
+    assert "Dentist at 3" in client.get(f"/app/{pid}/c/appointments").text
+    # A foreign `next` is ignored.
+    r = client.post(
+        f"/app/{pid}/messages", data={"text": "x", "kind": "say", "next": "https://evil.example/"}
+    )
+    assert r.headers["location"].startswith("/app/more?parent=")
+
+    # An open alert shows on home with its button, and in Needs you; acknowledging returns home.
+    run(env, ["simulate", pid], input="I fell\n/hangup\n")
+    home = _html.unescape(client.get("/app").text)
+    assert "Urgent" in home and "I've seen this" in home and "needs you" in home.lower()
+    needs = client.get(f"/app/{pid}/c/needs").text
+    assert "1 urgent" in needs.lower() and "I've seen this" in needs
+    aid = [a for a in svc.repo.alerts_since(pid, days=1) if a.tier == "now"][0].id
+    r = client.post(f"/app/{pid}/alerts/{aid}/ack", data={"next": f"/app?parent={pid}"})
+    assert r.headers["location"] == f"/app?parent={pid}&done=seen"
+    assert "Nothing needs you right now." in client.get("/app").text
+
+    # The Ask page.
+    ask = client.get(f"/app/{pid}/ask").text
+    assert "For the next call" in ask and "Dentist at 3" in ask
+
+
+def test_dashboard_for_a_brand_new_parent(env):
+    pid = _setup(env)
+    svc, messenger, client = _web(env)
+    import html as _html
+
+    _sign_in(client, messenger, "+1 555 0001")
+    home = _html.unescape(client.get("/app").text)
+    assert "hasn't spoken to Amma yet" in home
+    assert "No calls yet." in home and "Nothing noted yet." in home and "Nothing coming up." in home
+    for key in ("day", "health", "medication", "appointments", "needs", "followups"):
+        assert client.get(f"/app/{pid}/c/{key}").status_code == 200

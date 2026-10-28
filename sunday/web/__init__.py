@@ -67,6 +67,7 @@ from sunday.web.auth import (
     digits_only,
     login_message,
 )
+from sunday.web.categories import build_categories, headline
 from sunday.web.twilio_auth import make_twilio_verifier
 
 log = get_logger("web")
@@ -293,6 +294,12 @@ def create_app(services: Services) -> FastAPI:
 
     # -- the family page -----------------------------------------------------------------
 
+    def _pick(viewer: Viewer, parent: str):
+        p = parent_for(viewer, parent) if parent else viewer.parent(None)
+        if p is None:
+            raise HTTPException(status_code=404)
+        return p
+
     @app.get("/app", response_class=HTMLResponse)
     async def family_home(
         request: Request,
@@ -300,16 +307,114 @@ def create_app(services: Services) -> FastAPI:
         done: str = "",
         viewer: Viewer = Depends(current_viewer),
     ):
-        p = parent_for(viewer, parent) if parent else viewer.parent(None)
-        if p is None:
-            raise HTTPException(status_code=404)
+        """The front door: one sentence that answers "is she okay, do I need to do anything",
+        then six tiles whose single line already carries the answer."""
+        p = _pick(viewer, parent)
+        ctx = _family_context(repo, p, viewer, twilio_ready=settings.twilio_ready())
+        cats = build_categories(repo, p)
+        hour = p.local_now().hour
+        greeting = (
+            "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
+        )
+        return render(
+            request,
+            "home.html",
+            viewer=viewer,
+            toast=TOASTS.get(done, ""),
+            cats=cats,
+            tiles=[
+                cats[k]
+                for k in ("day", "health", "medication", "appointments", "needs", "followups")
+            ],
+            greeting=greeting,
+            headline=headline(p, cats, ctx["latest"], ctx["latest_local"]),
+            nav="home",
+            **ctx,
+        )
+
+    @app.get("/app/more", response_class=HTMLResponse)
+    async def family_more(
+        request: Request,
+        parent: str = "",
+        done: str = "",
+        viewer: Viewer = Depends(current_viewer),
+    ):
+        """Everything on one long page: settings, family, the queue, the digest, export."""
+        p = _pick(viewer, parent)
         return render(
             request,
             "family.html",
             viewer=viewer,
             toast=TOASTS.get(done, ""),
+            nav="more",
             **_family_context(repo, p, viewer, twilio_ready=settings.twilio_ready()),
         )
+
+    @app.get("/app/{pid}/c/{key}", response_class=HTMLResponse)
+    async def category_page(
+        request: Request,
+        pid: str,
+        key: str,
+        done: str = "",
+        viewer: Viewer = Depends(current_viewer),
+    ):
+        p = parent_for(viewer, pid)
+        cats = build_categories(repo, p)
+        if key not in cats:
+            raise HTTPException(status_code=404)
+        cat = cats[key]
+        today = p.local_today()
+        groups: list[tuple[str, list]] = []
+        for item in cat.items:
+            label = _day_label(item.when, today)
+            if groups and groups[-1][0] == label:
+                groups[-1][1].append(item)
+            else:
+                groups.append((label, [item]))
+        calls = (
+            [
+                c
+                for c in repo.recent_calls(p.id, days=30, limit=30)
+                if c.status == "completed" and c.summary
+            ]
+            if key == "day"
+            else []
+        )
+        return render(
+            request,
+            "category.html",
+            viewer=viewer,
+            toast=TOASTS.get(done, ""),
+            parent=p,
+            cat=cat,
+            groups=groups,
+            calls=calls,
+            local=lambda dt: p.local_now(dt) if dt else None,
+            nav="home",
+            here=f"/app/{p.id}/c/{key}",
+        )
+
+    @app.get("/app/{pid}/ask", response_class=HTMLResponse)
+    async def ask_page(
+        request: Request, pid: str, done: str = "", viewer: Viewer = Depends(current_viewer)
+    ):
+        """Leave something for the next call. The most-used action gets its own page."""
+        p = parent_for(viewer, pid)
+        return render(
+            request,
+            "ask.html",
+            viewer=viewer,
+            toast=TOASTS.get(done, ""),
+            parent=p,
+            queued=repo.undelivered_messages(p.id, include_future=True),
+            min_date=p.local_today().isoformat(),
+            nav="ask",
+            here=f"/app/{p.id}/ask",
+        )
+
+    def _back(next_url: str, default: str) -> RedirectResponse:
+        target = next_url if next_url.startswith("/app") and "//" not in next_url else default
+        return RedirectResponse(target, status_code=303)
 
     @app.post("/app/{pid}/messages")
     async def add_message(
@@ -317,6 +422,7 @@ def create_app(services: Services) -> FastAPI:
         text: str = Form(""),
         kind: str = Form("say"),
         on: str = Form(""),
+        next: str = Form(""),
         viewer: Viewer = Depends(current_viewer),
     ):
         p = parent_for(viewer, pid)
@@ -336,19 +442,32 @@ def create_app(services: Services) -> FastAPI:
                 kind=kind,
                 remind_on=remind_on,
             )
-        return RedirectResponse(f"/app?parent={p.id}&done=queued#tomorrow", status_code=303)
+        return _back(
+            f"{next}{'&' if '?' in next else '?'}done=queued" if next else "",
+            f"/app/more?parent={p.id}&done=queued#tomorrow",
+        )
 
     @app.post("/app/{pid}/messages/{mid}/remove")
-    async def remove_message(pid: str, mid: str, viewer: Viewer = Depends(current_viewer)):
+    async def remove_message(
+        pid: str, mid: str, next: str = Form(""), viewer: Viewer = Depends(current_viewer)
+    ):
         p = parent_for(viewer, pid)
         repo.delete_message(mid, p.id)
-        return RedirectResponse(f"/app?parent={p.id}&done=removed#tomorrow", status_code=303)
+        return _back(
+            f"{next}{'&' if '?' in next else '?'}done=removed" if next else "",
+            f"/app/more?parent={p.id}&done=removed#tomorrow",
+        )
 
     @app.post("/app/{pid}/alerts/{aid}/ack")
-    async def ack_alert(pid: str, aid: str, viewer: Viewer = Depends(current_viewer)):
+    async def ack_alert(
+        pid: str, aid: str, next: str = Form(""), viewer: Viewer = Depends(current_viewer)
+    ):
         p = parent_for(viewer, pid)
         repo.acknowledge_alert(aid, p.id, by=viewer.membership_for(p.id).name)
-        return RedirectResponse(f"/app?parent={p.id}&done=seen#alerts", status_code=303)
+        return _back(
+            f"{next}{'&' if '?' in next else '?'}done=seen" if next else "",
+            f"/app?parent={p.id}&done=seen",
+        )
 
     @app.post("/app/{pid}/memories")
     async def add_memory(
@@ -361,13 +480,13 @@ def create_app(services: Services) -> FastAPI:
         text = text.strip()[:300]
         if text:
             repo.add_memory(p.id, text, topic=topic.strip()[:30], source="family")
-        return RedirectResponse(f"/app?parent={p.id}&done=remembered#knows", status_code=303)
+        return RedirectResponse(f"/app/more?parent={p.id}&done=remembered#knows", status_code=303)
 
     @app.post("/app/{pid}/memories/{mem_id}/remove")
     async def remove_memory(pid: str, mem_id: int, viewer: Viewer = Depends(current_viewer)):
         p = parent_for(viewer, pid)
         repo.deactivate_memory(mem_id, p.id)
-        return RedirectResponse(f"/app?parent={p.id}&done=forgotten#knows", status_code=303)
+        return RedirectResponse(f"/app/more?parent={p.id}&done=forgotten#knows", status_code=303)
 
     @app.post("/app/{pid}/settings")
     async def update_settings(
@@ -394,7 +513,7 @@ def create_app(services: Services) -> FastAPI:
             fields["preferred_name"] = preferred_name.strip()[:40]
         if fields:
             repo.update_parent(p.id, **fields)
-        return RedirectResponse(f"/app?parent={p.id}&done=saved#settings", status_code=303)
+        return RedirectResponse(f"/app/more?parent={p.id}&done=saved#settings", status_code=303)
 
     @app.post("/app/{pid}/members/{member_id}")
     async def update_member(
@@ -416,7 +535,7 @@ def create_app(services: Services) -> FastAPI:
             fields["channel"] = channel
         if fields:
             repo.update_family_member(member_id, **fields)
-        return RedirectResponse(f"/app?parent={p.id}&done=saved#family", status_code=303)
+        return RedirectResponse(f"/app/more?parent={p.id}&done=saved#family", status_code=303)
 
     @app.post("/app/{pid}/members")
     async def invite_member(
@@ -444,7 +563,7 @@ def create_app(services: Services) -> FastAPI:
                     else "info",
                 )
                 _send_login(m, digits_only(phone))
-        return RedirectResponse(f"/app?parent={p.id}&done=invited#family", status_code=303)
+        return RedirectResponse(f"/app/more?parent={p.id}&done=invited#family", status_code=303)
 
     @app.post("/app/{pid}/medications")
     async def medications(
@@ -461,7 +580,7 @@ def create_app(services: Services) -> FastAPI:
         if add.strip():
             meds.append({"name": add.strip()[:60], "when": when.strip()[:20] or "morning"})
         repo.update_parent(p.id, medications=meds)
-        return RedirectResponse(f"/app?parent={p.id}&done=saved#settings", status_code=303)
+        return RedirectResponse(f"/app/more?parent={p.id}&done=saved#settings", status_code=303)
 
     @app.post("/app/{pid}/consent")
     async def consent(
@@ -472,7 +591,7 @@ def create_app(services: Services) -> FastAPI:
         p = parent_for(viewer, pid)
         repo.update_parent(p.id, consent_recording=recording == "yes")
         done = "recording_on" if recording == "yes" else "recording_off"
-        return RedirectResponse(f"/app?parent={p.id}&done={done}#settings", status_code=303)
+        return RedirectResponse(f"/app/more?parent={p.id}&done={done}#settings", status_code=303)
 
     @app.post("/app/{pid}/call", response_class=HTMLResponse)
     async def call_now(request: Request, pid: str, viewer: Viewer = Depends(current_viewer)):
@@ -937,6 +1056,16 @@ def _highlighted_turns(call) -> list[dict]:
         pieces.append(_html.escape(text[pos:]))
         out.append({"turn": t, "html": Markup("".join(pieces))})
     return out
+
+
+def _day_label(d: date, today: date) -> str:
+    if d == today:
+        return "Today"
+    if d == today - timedelta(days=1):
+        return "Yesterday"
+    if today - d < timedelta(days=7):
+        return d.strftime("%A")
+    return d.strftime("%a %d %b")
 
 
 def _next_call_text(p, now_local: datetime) -> str:

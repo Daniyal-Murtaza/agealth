@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Ask Sunday - {{ parent.address() }} - Sunday{% endblock %}
+{% block body %}
+{% include "_appnav.html" %}
+<p class="small"><a href="/app?parent={{ parent.id }}">&larr; Home</a></p>
+<section class="greet compact">
+  <h1>For the next call</h1>
+  <p class="headline">Tell {{ parent.address() }} something, ask her a question, or set a reminder. Sunday says it naturally and tells you what she said back.</p>
+</section>
+
+<form method="post" action="/app/{{ parent.id }}/messages" class="card">
+  <input type="hidden" name="next" value="{{ here }}">
+  <div class="field">
+    <label for="msg">What should Sunday say or ask?</label>
+    <input id="msg" name="text" type="text" maxlength="400" placeholder="Ask if she wants us to come on Sunday" required autofocus>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label for="kind">Kind</label>
+      <select id="kind" name="kind">
+        <option value="say">Tell {{ parent.address() }}</option>
+        <option value="ask">Ask, and get an answer</option>
+        <option value="remind">Remind</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="on">Hold until <span class="faint">(optional)</span></label>
+      <input id="on" name="on" type="date" min="{{ min_date }}">
+    </div>
+    <div class="field auto"><button class="btn" type="submit">Add</button></div>
+  </div>
+</form>
+
+<h3 class="daylabel">Queued</h3>
+<div class="card tight">
+  <ul class="list">
+    {% for m in queued %}
+    <li>
+      <div><span class="pill {{ m.kind }}">{{ {'say':'tell','ask':'ask','remind':'remind'}[m.kind] }}</span>{{ m.text }}
+        <div class="tiny faint">from {{ m.from_name }}{% if m.remind_on %} · from {{ m.remind_on.strftime('%a %d %b') }}{% endif %}</div></div>
+      <form method="post" action="/app/{{ parent.id }}/messages/{{ m.id }}/remove"><input type="hidden" name="next" value="{{ here }}"><button class="btn quiet" type="submit">Remove</button></form>
+    </li>
+    {% else %}<li class="empty">Nothing queued. Sunday will have its usual conversation.</li>{% endfor %}
+  </ul>
+</div>
+{% endblock %}
