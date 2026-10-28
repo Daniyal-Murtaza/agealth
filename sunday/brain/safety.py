@@ -40,6 +40,10 @@ class Signal:
 # language it arrives (Latin or native script). Keep them short and concrete.
 _NOW: dict[str, list[str]] = {
     "fall": [
+        r"\bme ca[ií]\b",
+        r"\bme he ca[ií]do\b",
+        r"\bestoy en el (piso|suelo)\b",
+        r"\bno puedo levantarme\b",
         r"\bi fell\b",
         r"\bfallen\b",
         r"\bfell down\b",
@@ -53,6 +57,7 @@ _NOW: dict[str, list[str]] = {
         r"ਡਿੱਗ",
     ],
     "chest_pain": [
+        r"\bdolor (en|de) (el )?pecho\b",
         r"\bchest pain\b",
         r"\bpain in (my )?chest\b",
         r"\bheart attack\b",
@@ -62,6 +67,8 @@ _NOW: dict[str, list[str]] = {
         r"\bdil ka dard\b",
     ],
     "breathing": [
+        r"\bno puedo respirar\b",
+        r"\bme falta (el )?aire\b",
         r"\bcan'?t breathe\b",
         r"\bshort of breath\b",
         r"\bsaans nahi\b",
@@ -74,8 +81,19 @@ _NOW: dict[str, list[str]] = {
         r"\bslurr",
         r"\bnumb\b",
     ],
-    "bleeding": [r"\bbleeding\b", r"\bblood (won'?t|will not) stop\b", r"\bkhoon\b", r"خون", r"खून"],
+    "bleeding": [
+        r"\bsangrando\b",
+        r"\bno para de sangrar\b",
+        r"\bbleeding\b",
+        r"\bblood (won'?t|will not) stop\b",
+        r"\bkhoon\b",
+        r"خون",
+        r"खून",
+    ],
     "emergency": [
+        r"\bay[úu]d[ea]me\b",
+        r"\bllam[ea]n? (a )?(una )?ambulancia\b",
+        r"\bemergencia\b",
         r"\bcall (an )?ambulance\b",
         r"\bcall 911\b",
         r"\bcall 999\b",
@@ -95,6 +113,8 @@ _NOW: dict[str, list[str]] = {
 
 _TODAY: dict[str, list[str]] = {
     "pain": [
+        r"\bmucho dolor\b",
+        r"\bme duele much[oí]simo\b",
         r"\b(bad|severe|terrible|a lot of) pain\b",
         r"\bhurts? (a lot|badly|so much)\b",
         r"\bbohot dard\b",
@@ -103,6 +123,9 @@ _TODAY: dict[str, list[str]] = {
         r"बहुत दर्द",
     ],
     "unwell": [
+        r"\bfiebre\b",
+        r"\bmareo\b",
+        r"\bmareada?\b",
         r"\bfever\b",
         r"\bvomit",
         r"\bdizzy\b",
@@ -119,6 +142,8 @@ _TODAY: dict[str, list[str]] = {
         r"\bi don'?t remember (if|whether) i\b",
     ],
     "low_mood": [
+        r"\bmuy sola?\b",
+        r"\bnadie me llama\b",
         r"\bno point\b",
         r"\bdon'?t want to (live|be here|go on)\b",
         r"\bwhat'?s the use\b",
@@ -147,6 +172,8 @@ _TODAY: dict[str, list[str]] = {
         r"\bsomeone wants money\b",
     ],
     "no_food": [
+        r"\bno he comido\b",
+        r"\bno hay comida\b",
         r"\bhaven'?t eaten\b",
         r"\bno food\b",
         r"\bnothing to eat\b",
@@ -255,24 +282,26 @@ EMERGENCY_LINES = {
         "अगर हो सके तो {emergency} पर भी फ़ोन करें या किसी पड़ोसी को बुलाएँ।",
         "मैं लाइन पर आपके साथ रहूँगी। धीरे-धीरे साँस लें।",
     ],
+    "es": [
+        "Estoy aquí con usted. Quédese donde está, no intente levantarse sola.",
+        "Ahora mismo le estoy avisando a {family} para que alguien venga.",
+        "¿Hay un teléfono o un vecino cerca? Si puede, llame también al {emergency}.",
+        "Me quedo en la línea con usted. Respire despacio.",
+    ],
 }
 
-EMERGENCY_NUMBERS = {"US": "911", "GB": "999", "PK": "1122", "IN": "112", "CA": "911", "AU": "000"}
-
-# E.164 country calling code -> country. US and Canada share +1 and share 911.
-_CALLING_CODES = {"1": "US", "44": "GB", "92": "PK", "91": "IN", "61": "AU"}
+# Sunday serves the United States today. The table is kept so a future service area is a
+# one-line change, and so a mis-filed number never hears the wrong emergency number.
+EMERGENCY_NUMBERS = {"US": "911", "CA": "911", "GB": "999", "PK": "1122", "IN": "112", "AU": "000"}
 
 
 def country_from_phone(phone: str | None) -> str | None:
-    """Best-effort country from a +E.164 number, so a parent in Karachi is told 1122, not 911."""
-    digits = re.sub(r"\D", "", phone or "")
-    if not (phone or "").strip().startswith("+") or not digits:
+    """ISO region for a +E.164 number, using the full number (Canada shares +1)."""
+    if not phone:
         return None
-    for length in (3, 2, 1):
-        country = _CALLING_CODES.get(digits[:length])
-        if country:
-            return country
-    return None
+    from sunday.geo import region_of
+
+    return region_of(phone)
 
 
 def emergency_number_for(phone: str | None, *, default: str = "911") -> str:

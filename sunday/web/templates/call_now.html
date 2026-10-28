@@ -4,7 +4,10 @@
 {% include "_appnav.html" %}
 <div class="narrow" style="margin: 1.5rem auto;">
   <div class="card">
-    {% if not placed %}
+    {% if outside %}
+      <h1 class="serif" style="font-size:2rem">Outside the service area</h1>
+      <p class="muted">{{ outside }} Sunday is available in {{ service_area }} for now; no call was placed.</p>
+    {% elif not placed %}
       <h1 class="serif" style="font-size:2rem">Calling isn't connected yet</h1>
       <p class="muted">This copy of Sunday has no phone line configured (Twilio keys and a public URL). The terminal simulator still works: <code>sunday simulate {{ parent.id }}</code>.</p>
     {% else %}

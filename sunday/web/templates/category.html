@@ -31,7 +31,7 @@
 <form method="post" action="/app/{{ parent.id }}/messages" class="card tight" style="margin-bottom:1rem">
   <input type="hidden" name="kind" value="remind"><input type="hidden" name="next" value="{{ here }}">
   <div class="row">
-    <div class="field" style="flex:3 1 220px"><label>Add an appointment</label><input name="text" type="text" maxlength="400" placeholder="Dr Khan at 10, Daniyal will pick you up at 9:30" required></div>
+    <div class="field" style="flex:3 1 220px"><label>Add an appointment</label><input name="text" type="text" maxlength="400" placeholder="Dr. Patel at 10, Daniel will pick you up at 9:30" required></div>
     <div class="field"><label>Remind her on</label><input name="on" type="date" min="{{ parent.local_today().isoformat() }}" required></div>
     <div class="field auto"><button class="btn" type="submit">Add</button></div>
   </div>

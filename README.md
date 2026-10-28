@@ -1,8 +1,9 @@
 # Sunday
 
-A warm daily phone call for an ageing parent, on the phone they already have.
-Afterwards the family gets a two-line note on WhatsApp; if something is wrong,
-they get an alert straight away. The parent never touches technology.
+A warm daily phone call for an aging parent, on the phone they already have.
+Afterwards the family gets a two-line text; if something is wrong, they get an
+alert straight away. The parent never touches technology. Available in the
+United States; Sunday will not place a call to a number outside it.
 
 Built in Python on Twilio Conversation Relay for speech, OpenAI for the
 conversation, and SQLite for everything that must not be lost. Everything can
@@ -12,11 +13,11 @@ are added at the end.
 ![The family page](docs/family-page.png)
 
 - **Honest and warm.** Opens with a fixed line that says who it is and who sent it. Short turns, one question at a time, the parent's name only now and then. Remembers yesterday ("did the plumber come?") and passes on messages from the family.
-- **Safe by code, not by prompt.** "I fell", "chest pain", "can't breathe" (English, Urdu, Hindi, Punjabi, Latin or native script) are caught by keyword triggers before any model runs. The whole family is alerted before Sunday says another word; the call switches to calm scripted lines with the right emergency number for the parent's country and stays on the line.
+- **Safe by code, not by prompt.** "I fell", "chest pain", "can't breathe" (in English and Spanish, plus Urdu, Hindi and Punjabi) are caught by keyword triggers before any model runs. The whole family is alerted before Sunday says another word; the call switches to calm scripted lines, reminds her she can dial 911, and stays on the line.
 - **Nothing invented.** Every observation, alert and memory must quote the parent's words; quotes not found in the transcript are dropped. Household chores become follow-ups, never alerts. No medical advice, ever.
 - **They can call it too.** Save the number as "Sunday". A call from the parent's own phone is answered by name, skips the morning survey, passes on anything waiting and just talks.
 - **Set up in five minutes, from the website.** "Start with your parent" creates the household and sends you a sign-in link. You place the introductory call from your page; daily calls begin only after that.
-- **A dashboard that answers two questions.** Is she okay today, and do I need to do anything? One sentence under your name, then six tiles whose single line already carries the answer: Amma's day, Health, Medication, Appointments, Needs you, Follow-ups. Everything Sunday hears is sorted into them automatically, in her own words. No password: a one-time link to the phone Sunday already messages.
+- **A dashboard that answers two questions.** Is she okay today, and do I need to do anything? One sentence under your name, then six tiles whose single line already carries the answer: Mom's day, Health, Medication, Appointments, Needs you, Follow-ups. Everything Sunday hears is sorted into them automatically, in her own words. No password: a one-time link to the phone Sunday already messages.
 
 ![The family dashboard on a phone](docs/family-page-phone.png)
 - **Recordings, only with consent.** Sunday says "this call is recorded for the family, as you agreed" at the start of every recorded call; the family listens from the call page.
@@ -73,7 +74,7 @@ source .venv/bin/activate
 Step 1. Get the code and go into the folder.
 
 ```bash
-git clone https://github.com/Daniyal-Murtaza/agealth.git
+git clone https://github.com/Daniel-Murtaza/agealth.git
 cd agealth
 ```
 
@@ -127,34 +128,34 @@ Sunday keeps everything in a small database file, `data/sunday.sqlite`, which is
 Step 1. Add the parent. Change the names and numbers if you like; keep the `+` and country code on the phone number.
 
 ```bash
-sunday parent add --name "Fatima Zaidi" --phone +923001234567 --language en \
-  --time 09:00 --timezone Asia/Karachi --call-me Amma --introduced-by "your son Daniyal"
+sunday parent add --name "Rosemary Walker" --phone "(614) 555-0101" --language en \
+  --time 09:00 --call-me Mom --introduced-by "your son Daniel"
 ```
 
-You should see: `Added Fatima Zaidi -> id par_xxxxxxxxxxxx`. Copy that id. Every command below uses it; where you see `par_XXXX`, type your id instead.
+The timezone is worked out from the area code (614 is Columbus, Ohio, so Eastern). A number outside the United States is refused here and everywhere else a call could be placed. You should see: `Added Rosemary Walker -> id par_xxxxxxxxxxxx`. Copy that id. Every command below uses it; where you see `par_XXXX`, type your id instead.
 
-Step 2. Add two family members. Daniyal gets everything; Hira only wants emergencies. `--channel console` means their messages print in the terminal, which is how you will read them without WhatsApp.
+Step 2. Add two family members. Daniel gets everything; Sarah only wants emergencies. `--channel console` means their messages print in the terminal, which is how you will read them without WhatsApp.
 
 ```bash
-sunday family add par_XXXX --name Daniyal --phone +15550001 --relation son --channel console --alerts info --primary
-sunday family add par_XXXX --name Hira --phone +15550002 --relation daughter --channel console --alerts now
+sunday family add par_XXXX --name Daniel --phone "(614) 555-0102" --relation son --channel console --alerts info --primary
+sunday family add par_XXXX --name Sarah --phone "(312) 555-0103" --relation daughter --channel console --alerts now
 ```
 
-You should see `Added Daniyal (son), gets: info and above via console.` and the same for Hira with `now`.
+You should see `Added Daniel (son), gets: info and above via console.` and the same for Sarah with `now`.
 
 Step 3. Tell Sunday about a medication and a couple of facts.
 
 ```bash
-sunday med add par_XXXX "blood pressure tablet" --when morning
-sunday memory add par_XXXX "Grandchildren are Ayaan (7) and Zara (4)." --topic family
-sunday memory add par_XXXX "Neighbour Farida visits on Wednesdays." --topic social
+sunday med add par_XXXX "blood pressure pill" --when morning
+sunday memory add par_XXXX "Grandchildren are Emma (7) and Noah (4)." --topic family
+sunday memory add par_XXXX "Linda next door stops by on Wednesdays." --topic social
 ```
 
 Step 4. Leave two messages from the family for the next call: one to pass on, one that needs an answer.
 
 ```bash
-sunday message par_XXXX --from Hira "I'll call Thursday after work."
-sunday message par_XXXX --from Daniyal --kind ask "Do you want a lift to the clinic on Tuesday?"
+sunday message par_XXXX --from Sarah "I'll call Thursday after work."
+sunday message par_XXXX --from Daniel --kind ask "Do you want a ride to the clinic on Tuesday?"
 ```
 
 Step 5. Check what Sunday knows before the call.
@@ -171,26 +172,26 @@ Step 6. Have the call.
 sunday simulate par_XXXX
 ```
 
-Sunday speaks first: `Hello Amma, it's Sunday calling, the daily call from your son Daniyal. How are you today?` You are Amma. Type an answer and press Enter. Try this conversation, one line at a time:
+Sunday speaks first: `Hello Mom, it's Sunday calling, the daily call from your son Daniel. How are you today?` You are Mom. Type an answer and press Enter. Try this conversation, one line at a time:
 
 ```
-I'm alright beta, slept a bit late but took my tablet with my chai
-Yes, I'd like the lift, after eleven though
-Just paratha and chai
+I'm alright honey, slept a bit late but took my pill with my coffee
+Yes, I'd like the ride, after eleven though
+Just oatmeal and coffee
 The plumber still hasn't come, third day now
 I'm a little tired now, let's talk tomorrow
 ```
 
-With the offline brain Sunday follows a fixed script (it will ask about sleep, tablets, food in turn); with OpenAI (Part 4) it converses. Either way, when you say you are tired the call closes warmly: `It was lovely talking to you, Amma...`
+With the offline brain Sunday follows a fixed script (it will ask about sleep, pills, food in turn); with OpenAI (Part 4) it converses. Either way, when you say you are tired the call closes warmly: `It was lovely talking to you, Mom...`
 
 Step 7. Read what the family received. Right after the call ends you will see:
 
 ```
---- to Daniyal (console +15550001) ---
-Sunday called Amma - ...
+--- to Daniel (console +16145550102) ---
+Sunday called Mom - ...
 ```
 
-followed by the note: how she sounded, medication, anything mentioned, "Tomorrow I'll ask about", and "Replies to your messages". Notice there is no `--- to Hira` block. Hira asked for emergencies only, and nothing was an emergency.
+followed by the note: how she sounded, medication, anything mentioned, "Tomorrow I'll ask about", and "Replies to your messages". Notice there is no `--- to Sarah` block. Sarah asked for emergencies only, and nothing was an emergency.
 
 Step 8. Look at the stored result.
 
@@ -210,21 +211,21 @@ Each test is one simulated call. Start each with `sunday simulate par_XXXX`, typ
 
 Type:
 ```
-Not good beta, I fell in the kitchen and I can't get up
+Not good honey, I fell in the kitchen and I can't get up
 ```
-Expect, in this order: a warning line in the terminal, then `--- to Daniyal` and `--- to Hira` both with `URGENT - Sunday about Amma`, quoting your exact words, then Sunday's line `I'm here with you. Stay where you are, don't try to get up alone.` Both family members get this one, including Hira. Keep typing (`my hip hurts`, `yes the phone is in my hand`): Sunday stays on the line with calm scripted lines and gives the emergency number for Pakistan, `1122`, because the parent's number starts with +92. Type `/hangup` to end. The note afterwards says she sounded low and does not say "you're well".
+Expect, in this order: a warning line in the terminal, then `--- to Daniel` and `--- to Sarah` both with `URGENT - Sunday about Mom`, quoting your exact words, then Sunday's line `I'm here with you. Stay where you are, don't try to get up alone.` Both family members get this one, including Sarah. Keep typing (`my hip hurts`, `yes the phone is in my hand`): Sunday stays on the line with calm scripted lines and reminds her she can call `911`. Type `/hangup` to end. The note afterwards says she sounded low and does not say "you're well".
 
-### 3.2 The same phrases in Urdu, Hindi or Punjabi
+### 3.2 The same phrases in Spanish (or Urdu, Hindi, Punjabi)
 
-Type `main gir gayi` (Urdu, Latin script) or `मैं गिर गई` or `گر گئی`. Same emergency path. Try `seene mein dard` (chest pain) or `saans nahi aa rahi` (can't breathe).
+Type `Me caí en la cocina y no puedo levantarme`. Same emergency path, and if the parent's language is set to `es` the calm lines come back in Spanish. Try `dolor en el pecho` (chest pain) or `no puedo respirar` (can't breathe). Urdu, Hindi and Punjabi phrases work too: `main gir gayi`, `मैं गिर गई`.
 
 ### 3.3 Significant pain is a "check today", not an emergency
 
 Type:
 ```
-Alright beta, but my knee hurts so much today I could barely walk to the kitchen
+Alright honey, but my knee hurts so much today I could barely walk to the kitchen
 ```
-Expect: the call carries on normally (no emergency script). After the call, Daniyal gets a separate message `Please check today - Sunday about Amma / Amma mentioned significant pain today.` Hira does not (she only wants `now`). The closing line says "I'll let the family know how you're doing today" instead of "you're well".
+Expect: the call carries on normally (no emergency script). After the call, Daniel gets a separate message `Please check today - Sunday about Mom / Mom mentioned significant pain today.` Sarah does not (she only wants `now`). The closing line says "I'll let the family know how you're doing today" instead of "you're well".
 
 ### 3.4 Breakfast on its way is not an alert
 
@@ -232,7 +233,7 @@ Type:
 ```
 Haven't eaten yet, I'll make something later
 ```
-Expect: no alert. Now in another call type `I haven't eaten since yesterday`: Daniyal gets `Amma said they have not eaten.`
+Expect: no alert. Now in another call type `I haven't eaten since yesterday`: Daniel gets `Mom said they have not eaten.`
 
 ### 3.5 "No pain today" stays quiet
 
@@ -244,19 +245,19 @@ Type `The plumber still hasn't come, third day now, the tap is dripping`. Expect
 
 ### 3.7 A family "ask" keeps the call open until it is answered
 
-Queue an ask first: `sunday message par_XXXX --from Daniyal --kind ask "Do you want us to come on Sunday?"`. In the call, say `I'm tired, let's talk tomorrow` before answering it. Expect: Sunday does not close; it asks the question. Answer it (`Yes, come after lunch`), then say you are tired: now it closes. The reply appears under "Replies to your messages".
+Queue an ask first: `sunday message par_XXXX --from Daniel --kind ask "Do you want us to come on Sunday?"`. In the call, say `I'm tired, let's talk tomorrow` before answering it. Expect: Sunday does not close; it asks the question. Answer it (`Yes, come after lunch`), then say you are tired: now it closes. The reply appears under "Replies to your messages".
 
 ### 3.8 A "tell them" message only counts when actually said **(AI)**
 
-Queue `sunday message par_XXXX --from Hira "I'll call Thursday after work."` and have a call. Expect Sunday to actually say something like "Hira asked me to tell you she'll call Thursday after work". If it only said "I'll let Hira know", the message would stay queued for the next call; `sunday show` tells you which happened.
+Queue `sunday message par_XXXX --from Sarah "I'll call Thursday after work."` and have a call. Expect Sunday to actually say something like "Sarah asked me to tell you she'll call Thursday after work". If it only said "I'll let Sarah know", the message would stay queued for the next call; `sunday show` tells you which happened.
 
 ### 3.9 No double-asking **(AI)**
 
-Open with `I'm alright, slept a bit late but took my tablet with my chai`. Expect Sunday not to ask about sleep or the tablet again.
+Open with `I'm alright, slept a bit late but took my pill with my coffee`. Expect Sunday not to ask about sleep or the pill again.
 
 ### 3.10 Name used sparingly **(AI)**
 
-Over a six-turn call, "Amma" should appear in roughly one line in three, never in every sentence.
+Over a six-turn call, "Mom" should appear in roughly one line in three, never in every sentence.
 
 ### 3.11 Nothing invented **(AI)**
 
@@ -268,7 +269,7 @@ Set `SUNDAY_PROVIDER=openai` with a wrong key (`OPENAI_API_KEY=sk-wrong`) and si
 
 ### 3.13 Alert levels per family member
 
-Run `sunday show par_XXXX` after 3.1 and 3.3. The alerts list shows `NOW: Amma said they fell` and `TODAY: ...`. In the console blocks you saw who received what: Hira only the URGENT one.
+Run `sunday show par_XXXX` after 3.1 and 3.3. The alerts list shows `NOW: Mom said they fell` and `TODAY: ...`. In the console blocks you saw who received what: Sarah only the URGENT one.
 
 ---
 
@@ -282,7 +283,7 @@ OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-Step 2. Repeat Part 2 Step 6. Now Sunday converses: it picks up on Farida, asks about Ayaan, passes on Hira's message early, asks Daniyal's question and waits for the answer, and does not re-ask what you already said. Then run the **(AI)** tests in Part 3.
+Step 2. Repeat Part 2 Step 6. Now Sunday converses: it picks up on Linda, asks about Emma, passes on Sarah's message early, asks Daniel's question and waits for the answer, and does not re-ask what you already said. Then run the **(AI)** tests in Part 3.
 
 A call costs a few cents. If you see `OPENAI_API_KEY is not set`, the `.env` line is missing or you are in a different folder.
 
@@ -292,13 +293,13 @@ A call costs a few cents. If you see `OPENAI_API_KEY is not set`, the `.env` lin
 
 The website has a public landing page, a sign-in by one-time link, and the family page. It runs on your laptop only (`127.0.0.1`); nobody else can reach it until Part 8.
 
-Step 1. Seed a demo family so the page has two weeks of history to show. This creates a separate demo parent ("Amma", +92 300 0000 001) with three family members; it does not touch the parent you made in Part 2.
+Step 1. Seed a demo family so the page has two weeks of history to show. This creates a separate demo parent (Rosemary Walker, "Mom", in Columbus, Ohio) with three grown children; it does not touch the parent you made in Part 2.
 
 ```bash
 sunday demo
 ```
 
-You should see `Demo parent ready: par_...` and three phone numbers. The first, `+1 555 010 0001`, is Daniyal.
+You should see `Demo parent ready: par_...` and three phone numbers. The first, `+1 614 555 0151`, is Daniel.
 
 Step 2. Start the server. Leave this terminal window open; it prints the sign-in links and the family notes.
 
@@ -310,15 +311,15 @@ You should see `Sunday listening on http://127.0.0.1:8000`. If instead you see `
 
 Step 3. Open http://127.0.0.1:8000 in your browser. This is the public landing page: the pitch, a WhatsApp mock-up of a note and an alert, how it works. Click around; nothing here needs a login.
 
-Step 4. Sign in. Click **Family sign in**, type `+1 555 010 0001`, click **Send me a link**. The page says "Check your phone". Now look at the terminal running `sunday serve`: a block `--- to Daniyal (console ...) ---` contains a link like `http://127.0.0.1:8000/auth/eyJ...`. Copy it into the browser.
+Step 4. Sign in. Click **Family sign in**, type `(614) 555-0151`, click **Send me a link**. The page says "Check your phone". Now look at the terminal running `sunday serve`: a block `--- to Daniel (console ...) ---` contains a link like `http://127.0.0.1:8000/auth/eyJ...`. Copy it into the browser.
 
-You land on "One tap to continue", which submits itself. (That page exists because WhatsApp fetches links to make previews; the preview must not spend your one-time link.) You are now on Amma's page, signed in as Daniyal.
+You land on "One tap to continue", which submits itself. (That page exists because WhatsApp fetches links to make previews; the preview must not spend your one-time link.) You are now on Mom's page, signed in as Daniel.
 
 Step 5. Test that the link is single-use. Paste the same `/auth/...` link again. Expect the sign-in page with "That link has expired or was already used."
 
-Step 6. The home page. Under "Good morning, Daniyal" is one sentence: how Amma sounded on the last call and whether anything needs you. Then six tiles, each with its own one-line answer computed from the calls:
+Step 6. The home page. Under "Good morning, Daniel" is one sentence: how Mom sounded on the last call and whether anything needs you. Then six tiles, each with its own one-line answer computed from the calls:
 
-- **Amma's day**: the first line of today's note. Opens the list of calls and what she ate, who visited, what she did.
+- **Mom's day**: the first line of today's note. Opens the list of calls and what she ate, who visited, what she did.
 - **Health**: "2 mentions of pain this week" or "Nothing worrying this week". Opens pain, sleep, mood and mobility notes grouped by day, each with her exact words and a link to the call.
 - **Medication**: "Taken today. 7 of the last 7 days." Opens a day-by-day record of taken, missed and unclear.
 - **Appointments**: the next dated reminder. Opens the list and a form to add one; Sunday reminds her on the day.
@@ -329,28 +330,28 @@ Below the tiles: the fortnight strip (one lettered square per day; hover or tap 
 
 Step 6b. **Calls** is the timeline: one card per day, open it to see the quoted words the note was built from, and "Read the full call" for the transcript with the evidence highlighted. **Family** is who hears what, with invite. **Settings** holds the schedule, language, medications, recording, what Sunday knows, the weekly report and export. Walk Settings top to bottom:
 
-- **Header.** "Amma", last call and mood, next call time, "Signed in as Daniyal (son). You get: everything."
+- **Header.** "Mom", last call and mood, next call time, "Signed in as Daniel (son). You get: everything."
 
 - **Today's note.** The latest call's summary. Click **read the call →** to see the full transcript, "What Sunday noticed" with quotes, and any alerts. Click back.
 - **The last two weeks.** Fourteen squares: green shades for answered calls by mood, a dashed red one for the morning nobody answered, grey for no call. Hover for the date; click a square to open that call. Below: days answered, days medication taken, alerts this week.
-- **For the next call.** Type `Ask if she wants us to come for Eid`, choose **Ask, and get an answer**, click **Add**. It appears in the list with an `ASK` tag and "from Daniyal". Click **Remove** to take it off. Now add a reminder: type `Dr Khan's appointment is at 10 tomorrow`, choose **Remind**, pick a date next week in **Hold until**, click **Add**. It shows "from Sun 02 Nov" (your date): Sunday will not say it before then.
+- **For the next call.** Type `Ask if she wants us to come for Eid`, choose **Ask, and get an answer**, click **Add**. It appears in the list with an `ASK` tag and "from Daniel". Click **Remove** to take it off. Now add a reminder: type `Dr Khan's appointment is at 10 tomorrow`, choose **Remind**, pick a date next week in **Hold until**, click **Add**. It shows "from Sun 02 Nov" (your date): Sunday will not say it before then.
 - **Recent calls.** Every call with mood dot and first line. Click any to read it.
 - **This week.** The weekly report: calls, alerts, medication, mood, worth a look, still open. Under it, **Alerts already seen (2)**: the demo's knee-pain alert and the missed morning, each marked with who acknowledged it.
 - **What Sunday knows.** Type `Her sister Rukhsana calls on Fridays`, topic `family`, click **Tell Sunday**. It appears at the top. Click the **×** next to it to make Sunday forget it.
 - **Settings.** Change **Call time** to 08:30 and click **Save**; the header's "Next call" updates. Change it back if you like.
 - **Medications Sunday asks about.** Add `eye drops` at `night`; remove it with **×**.
-- **Recording.** A checkbox: "Amma has agreed that calls may be recorded..." Tick it. From now on every call opens with "This call is recorded for the family, as you agreed." (Run `sunday simulate <demo par id>` to hear the line; untick to turn it off. Actual audio needs Twilio, Part 8.)
-- **Who hears what.** Daniyal, Hira, Jamal with their levels. Only your own row has a form: change yourself to **check-today + urgent** and **Save**; the header now says "You get: check-today and urgent". Change it back.
+- **Recording.** A checkbox: "Mom has agreed that calls may be recorded..." Tick it. From now on every call opens with "This call is recorded for the family, as you agreed." (Run `sunday simulate <demo par id>` to hear the line; untick to turn it off. Actual audio needs Twilio, Part 8.)
+- **Who hears what.** Daniel, Sarah, Jamal with their levels. Only your own row has a form: change yourself to **check-today + urgent** and **Save**; the header now says "You get: check-today and urgent". Change it back.
 - **Invite a sibling.** Open it, type a name, relation, a phone with country code, pick a level, **Invite**. They appear in the list, and the `sunday serve` terminal shows the sign-in link that would have gone to their phone.
 - **Export everything.** Downloads `sunday-amma.json`: parent, family, memories, alerts, and every call with its full transcript and observations.
 
-Step 7. Test that another family cannot see Amma. In a fresh private browser window, sign in as a number that is not on Amma's family (your Part 2 parent's family, `+15550001`, works: ask for a link, copy it from the terminal). On that page, change the URL to `/app?parent=<the demo par id>`. Expect "no such parent on your account". Try `/app/<demo par id>/export.json`: 404.
+Step 7. Test that another family cannot see Mom. In a fresh private browser window, sign in as a number that is not on Mom's family (your Part 2 parent's family, `(614) 555-0102`, works: ask for a link, copy it from the terminal). On that page, change the URL to `/app?parent=<the demo par id>`. Expect "no such parent on your account". Try `/app/<demo par id>/export.json`: 404.
 
 Step 8. Test that an unknown number gets nothing. On the sign-in page enter `+1 555 999 9999`. The page still says "Check your phone", but the terminal shows no link was sent. The form never reveals which numbers are known.
 
 Step 9. **Sign out** (top right). `/app` now redirects to the sign-in page.
 
-Step 10. Alerts to acknowledge. Have an emergency call for the demo parent in a second terminal (`sunday simulate <demo par id>`, type `I fell`, then `/hangup`). Reload the family page: a red **Urgent** card at the top with the quote and an **I've seen this** button. Click it; the card moves under "Alerts already seen", marked "seen by Daniyal".
+Step 10. Alerts to acknowledge. Have an emergency call for the demo parent in a second terminal (`sunday simulate <demo par id>`, type `I fell`, then `/hangup`). Reload the family page: a red **Urgent** card at the top with the quote and an **I've seen this** button. Click it; the card moves under "Alerts already seen", marked "seen by Daniel".
 
 Stop the server with Ctrl+C when you are done, or leave it running for Part 6.
 
@@ -362,7 +363,7 @@ This is how a new family would arrive from the website without anyone touching t
 
 Step 1. With `sunday serve` running, open http://127.0.0.1:8000 and click **Start with your parent**.
 
-Step 2. The form is three short steps with a progress bar: you, your parent, the first call. Phone fields have a country picker and format as you type; the parent's timezone is worked out from their number (change it if they live elsewhere). The last step previews exactly how Sunday will greet them in the chosen language. Fill it with made-up people. Use numbers that are not already in use, with country codes, for example yourself `+1 555 020 0001` and parent `+92 300 7654321`. Add a medication and a line or two of "things Sunday should know". Tick the confirmation box. Click **Set up Sunday**.
+Step 2. The form is three short steps with a progress bar: you, your parent, the first call. Phone fields have a country picker and format as you type; the parent's timezone is worked out from the area code (change it if she lives elsewhere). The parent's number must be a US number; anything else is refused with a plain sentence. The last step previews exactly how Sunday will greet her in the chosen language. Fill it with made-up people. Use numbers that are not already in use, for example yourself `(614) 555-0177` and parent `(614) 555-0178`. Add a medication and a line or two of "things Sunday should know". Tick the confirmation box. Click **Set up Sunday**.
 
 Step 3. The page says "Check your phone, <your name>". In the server terminal, copy the `/auth/...` link and open it. You are on the new parent's page.
 
@@ -378,7 +379,7 @@ Step 5. Stand in for the introductory call with the simulator. Find the new pare
 
 Step 6. Submit the form again with the same "your mobile". Expect "You're already set up" and a fresh sign-in link rather than a second household.
 
-Step 7. Validation. Submit with a phone number missing the `+` country code, or with the confirmation unticked: the form comes back with a plain explanation of what to fix and nothing is created.
+Step 7. Validation. Submit with a number outside the United States (`+92 300 1234567`), a number that isn't possible (`555-01`), or with the confirmation unticked: the form comes back with a plain explanation of what to fix and nothing is created.
 
 ---
 
@@ -387,7 +388,7 @@ Step 7. Validation. Submit with a phone number missing the `+` country code, or 
 **Dated reminders.** A message with `--on` (or "Hold until" on the website) is held until that local date:
 
 ```bash
-sunday message par_XXXX --from Daniyal --kind remind --on 2030-01-02 "Appointment at 10 with Dr Khan."
+sunday message par_XXXX --from Daniel --kind remind --on 2030-01-02 "Appointment at 10 with Dr Khan."
 sunday show par_XXXX            # listed with "(from Wed 02 Jan)"
 sunday simulate par_XXXX        # not mentioned: it is not that day yet
 ```
@@ -405,7 +406,7 @@ sunday digest par_XXXX --send   # also sends it to family members who get "info"
 sunday due --dry-run            # says who would be rung or sent a report right now, rings nobody
 ```
 
-To watch it fire, set a parent's call time to a minute or two from now in their timezone (`--time HH:MM` in the website's Settings card) and run `sunday due --dry-run` again: `would call Fatima Zaidi (+92...) now`. Without Twilio configured, `sunday due` without `--dry-run` prints the same line instead of dialling.
+To watch it fire, set a parent's call time to a minute or two from now in her timezone (`--time HH:MM` in the website's Settings card) and run `sunday due --dry-run` again: `would call Rosemary Walker (+1614...) now`. Without Twilio configured, `sunday due` without `--dry-run` prints the same line instead of dialling.
 
 ---
 
@@ -413,7 +414,7 @@ To watch it fire, set a parent's call time to a minute or two from now in their 
 
 Everything so far ran on your laptop. This part connects a real phone line. Budget: a Twilio trial account is free with credit; a call costs roughly $0.07 a minute for Conversation Relay plus voice minutes, and a few cents of model usage.
 
-Step 1. Create a Twilio account at https://www.twilio.com, verify your own mobile (trial accounts can only call verified numbers), and buy a voice-capable number. Note the Account SID, Auth Token and the number.
+Step 1. Create a Twilio account at https://www.twilio.com, verify your own cell (trial accounts can only call verified numbers), and buy a US voice-capable number. Note the Account SID, Auth Token and the number.
 
 Step 2. Install ngrok (https://ngrok.com/download) and sign in once (`ngrok config add-authtoken ...`). In a terminal that you leave open:
 
@@ -449,9 +450,9 @@ Step 5. Place a call from a third terminal:
 sunday call par_XXXX
 ```
 
-Your phone rings. Answer; you hear "Hello Amma, it's Sunday calling..." Talk to it. Hang up or say you are tired. Within a few seconds the family note arrives on WhatsApp or SMS (or prints in the `serve` terminal for console members), ending with "Read the call: https://.../app/.../calls/..." Open that link, sign in with the family number, and read the transcript. The same call is available from the website's **Have Sunday call now** button.
+Your phone rings. Answer; you hear "Hello Mom, it's Sunday calling..." Talk to it. Hang up or say you are tired. Within a few seconds the family note arrives on WhatsApp or SMS (or prints in the `serve` terminal for console members), ending with "Read the call: https://.../app/.../calls/..." Open that link, sign in with the family number, and read the transcript. The same call is available from the website's **Have Sunday call now** button.
 
-Step 6. The parent calls Sunday. In the Twilio console, open your number, and under Voice set "A call comes in" to Webhook, `https://....ngrok-free.app/twilio/inbound`, HTTP POST. Save. Now ring your Twilio number from the parent's phone: "Hello Amma, it's Sunday. How lovely that you called. How are you?" No survey, just a conversation; the note says "Amma called Sunday". Ring from a number that is not a parent: a kind message that the number is not set up, and the call ends.
+Step 6. The parent calls Sunday. (Only US callers are answered; a call from elsewhere hears a short message and is hung up on.) In the Twilio console, open your number, and under Voice set "A call comes in" to Webhook, `https://....ngrok-free.app/twilio/inbound`, HTTP POST. Save. Now ring your Twilio number from the parent's phone: "Hello Mom, it's Sunday. How lovely that you called. How are you?" No survey, just a conversation; the note says "Mom called Sunday". Ring from a number that is not a parent: a kind message that the number is not set up, and the call ends.
 
 Step 7. Recordings. On the family page tick **Recording**. Place a call: it opens with "This call is recorded for the family, as you agreed." After it ends, open the call page: a **Listen** card with a player (if it says "still being prepared", wait a minute and reload). The audio is served through Sunday after checking you are family; Twilio's own URL is never shown.
 
@@ -473,13 +474,13 @@ Security notes for a real deployment: Twilio's webhooks are verified against you
 
 For sharing a link (an application, a friend, an investor), the website runs for free on Render with no card. The free instance sleeps after fifteen idle minutes and takes about a minute to wake, and has no disk, so the demo family is re-seeded on every start. That is right for a demo link and wrong for a real family, who need the always-on paid instance plus Twilio (Part 8). Phone calls do work on the free copy once Twilio keys are added, which is why Render was chosen over function-based hosts.
 
-Step 1. Open https://render.com/deploy?repo=https://github.com/Daniyal-Murtaza/agealth and sign in with GitHub. No payment details are asked for.
+Step 1. Open https://render.com/deploy?repo=https://github.com/Daniel-Murtaza/agealth and sign in with GitHub. No payment details are asked for.
 
 Step 2. Render reads `render.yaml` and shows one service, `sunday`, on the Free plan with everything prefilled: a generated `SUNDAY_SECRET_KEY`, `SUNDAY_PROVIDER=fake`, the demo family seeded and the demo sign-in switched on. Click **Apply** (or **Deploy Blueprint**).
 
 Step 3. Wait for the build (two or three minutes the first time). The dashboard shows a URL like `https://sunday-xxxx.onrender.com`. Open it yourself once before sharing, so it is awake.
 
-Step 4. Test the hosted copy: the landing page; **See a family's page** signs you in as Daniyal to the demo household; every card works as in Part 5. **Start with your parent** also works, though sign-in links for new families appear only in Render's Logs tab until Twilio is configured.
+Step 4. Test the hosted copy: the landing page; **See a family's page** signs you in as Daniel to the demo household; every card works as in Part 5. **Start with your parent** also works, though sign-in links for new families appear only in Render's Logs tab until Twilio is configured.
 
 Step 5. For real conversations, add `OPENAI_API_KEY` in the service's Environment tab and change `SUNDAY_PROVIDER` to `openai`. For real phones, add the Twilio variables (`SUNDAY_PUBLIC_URL` is already the Render URL) and point the Twilio number's webhook at `https://sunday-xxxx.onrender.com/twilio/inbound` as in Part 8 Step 6.
 
@@ -546,7 +547,7 @@ sunday/
     __init__.py     routes: landing, onboarding, sign-in, the family page and its actions, export, Twilio
     auth.py         one-time links over WhatsApp/SMS, signed session cookie, rate limits
     twilio_auth.py  X-Twilio-Signature verification, fail-closed
-    categories.py   sorts calls into Amma's day / Health / Medication / Appointments / Needs you / Follow-ups
+    categories.py   sorts calls into Mom's day / Health / Medication / Appointments / Needs you / Follow-ups
     templates/      base, landing, start (wizard), login, home, category, calls, ask, members, settings, call, call_now, legal/*
     static/         sunday.css (tokens in docs/design-tokens.md), self-hosted Fraunces + Inter, icons, og image, manifest, service worker
   scheduler.py      who is due a call now (one retry, never more); whose weekly report is due

@@ -45,13 +45,13 @@ def _setup(env) -> str:
             "--name",
             "Fatima Zaidi",
             "--phone",
-            "+923001234567",
+            "+16145550101",
             "--language",
             "en",
             "--time",
             "09:00",
             "--timezone",
-            "Asia/Karachi",
+            "America/New_York",
             "--call-me",
             "Amma",
             "--introduced-by",
@@ -122,7 +122,7 @@ def _setup(env) -> str:
 def test_setup_and_status(env):
     pid = _setup(env)
     r = run(env, ["status"])
-    assert "Fatima Zaidi" in r.output and "Asia/Karachi" in r.output
+    assert "Fatima Zaidi" in r.output and "America/New_York" in r.output
     r = run(env, ["show", pid])
     assert "blood pressure tablet" in r.output and "Ayaan and Zara" in r.output
     assert "from Hira: I'll call Thursday" in r.output
@@ -267,7 +267,7 @@ def test_parent_can_call_in(env):
 
     # Amma rings from her own phone at 2am: greeted by name, no survey, pipeline runs when
     # the relay closes even though no status callback is configured for inbound calls.
-    r = client.post("/twilio/inbound", data={"CallSid": "CA10", "From": "+92 300 1234567"})
+    r = client.post("/twilio/inbound", data={"CallSid": "CA10", "From": "+1 614 555 0101"})
     assert r.status_code == 200 and "ConversationRelay" in r.text
     assert "How lovely that you called" in r.text
     with client.websocket_connect("/twilio/relay") as ws:
@@ -362,7 +362,7 @@ def test_landing_is_public_and_the_family_page_is_not(env):
     _setup(env)
     _, _, client = _web(env)
     r = client.get("/")
-    assert r.status_code == 200 and "Someone calls Amma every morning" in r.text
+    assert r.status_code == 200 and "Someone calls Mom every morning" in r.text
     assert "Family sign in" in r.text
     assert client.get("/health").json() == {"ok": True}
     for path in ("/app", "/app/par_x/export.json", "/app/par_x/calls/call_x"):
@@ -509,12 +509,12 @@ def test_demo_seeds_a_fortnight_and_the_page_renders_it(env):
     assert r.exit_code == 0 and "Demo parent ready" in r.output
     assert run(env, ["demo"]).exit_code == 0  # idempotent
     svc, messenger, client = _web(env)
-    _sign_in(client, messenger, "+1 555 010 0001")
+    _sign_in(client, messenger, "+1 614 555 0151")
     page = client.get("/app").text
-    assert "Amma" in page and "days answered" in page and "Dr Khan" in page
+    assert "Mom" in page and "days answered" in page and "Dr. Patel" in page
     assert "called in" not in page
     assert page.count('class="answered') == 13 and 'class="missed' in page
-    pid = next(p for p in svc.repo.list_parents() if p.preferred_name == "Amma").id
+    pid = next(p for p in svc.repo.list_parents() if p.preferred_name == "Mom").id
     assert "seen by" in client.get(f"/app/{pid}/c/needs").text
 
 
@@ -566,17 +566,17 @@ def test_twilio_verification_fails_closed_without_a_token(env):
 
 
 START = {
-    "your_name": "Daniyal",
+    "your_name": "Daniel",
     "relation": "son",
-    "your_phone": "+1 555 010 0001",
-    "parent_name": "Fatima Zaidi",
-    "call_me": "Amma",
-    "parent_phone": "+92 300 1234567",
-    "language": "ur",
+    "your_phone": "(614) 555-0102",
+    "parent_name": "Rosemary Walker",
+    "call_me": "Mom",
+    "parent_phone": "(614) 555-0101",
+    "language": "en",
     "call_time": "08:30",
-    "timezone": "Asia/Karachi",
-    "medications": "blood pressure tablet, eye drops",
-    "about": "Grandchildren are Ayaan (7) and Zara (4).\nNeighbour Farida visits on Wednesdays.",
+    "timezone": "America/New_York",
+    "medications": "blood pressure pill, eye drops",
+    "about": "Grandchildren are Emma (7) and Noah (4).\nLinda next door visits on Wednesdays.",
     "confirm": "yes",
 }
 
@@ -589,37 +589,41 @@ def test_self_serve_onboarding_creates_the_household_and_gates_daily_calls(env):
     assert "Start with your parent" in client.get("/").text
 
     # Validation: missing confirmation and a number without a country code.
-    bad = dict(START, confirm="", parent_phone="0300 1234567")
+    bad = dict(START, confirm="", parent_phone="555-01")
     r = client.post("/start", data=bad)
-    assert r.status_code == 200 and "country code" in r.text and "confirm" in r.text
+    assert r.status_code == 200 and "area code" in r.text and "confirm" in r.text
+    # A real number outside the United States is refused with a plain sentence.
+    abroad = dict(START, parent_phone="+92 300 1234567")
+    r = client.post("/start", data=abroad)
+    assert "United States only" in r.text and svc.repo.list_parents() == []
     assert svc.repo.list_parents() == [] and messenger.sent == []
 
     r = client.post("/start", data=START)
-    assert r.status_code == 200 and "Check your phone, Daniyal" in r.text
+    assert r.status_code == 200 and "Check your phone, Daniel" in r.text
     (p,) = svc.repo.list_parents()
-    assert p.name == "Fatima Zaidi" and p.preferred_name == "Amma" and p.phone == "+923001234567"
-    assert (p.language, p.call_time, p.timezone) == ("ur", "08:30", "Asia/Karachi")
-    assert p.introduced_by == "your son Daniyal"
-    assert [m["name"] for m in p.medications] == ["blood pressure tablet", "eye drops"]
+    assert p.name == "Rosemary Walker" and p.preferred_name == "Mom" and p.phone == "+16145550101"
+    assert (p.language, p.call_time, p.timezone) == ("en", "08:30", "America/New_York")
+    assert p.introduced_by == "your son Daniel"
+    assert [m["name"] for m in p.medications] == ["blood pressure pill", "eye drops"]
     assert len(svc.repo.memories_for(p.id)) == 2
     (member,) = svc.repo.family_for(p.id)
-    assert member.name == "Daniyal" and member.phone == "+15550100001" and member.is_primary
+    assert member.name == "Daniel" and member.phone == "+16145550102" and member.is_primary
     assert member.channel == "console"  # no Twilio on this copy
     # The sign-in link went to the new member.
-    assert messenger.sent[-1][0] == "Daniyal" and "/auth/" in messenger.sent[-1][1]
+    assert messenger.sent[-1][0] == "Daniel" and "/auth/" in messenger.sent[-1][1]
 
     # No daily call until the introductory call has happened, whatever the clock says.
     assert p.intro_done is False
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    at = datetime(2026, 11, 2, 8, 31, tzinfo=ZoneInfo("Asia/Karachi"))
+    at = datetime(2026, 11, 2, 8, 31, tzinfo=ZoneInfo("America/New_York"))
     assert due_parents(svc.repo, now=at) == []
 
     # Sign in and see the introductory-call card.
-    _sign_in(client, messenger, "+1 555 010 0001")
+    _sign_in(client, messenger, "+1 614 555 0102")
     page = client.get("/app").text
-    assert "First, the introductory call" in page and "Have Sunday call Amma now" in page
+    assert "First, the introductory call" in page and "Have Sunday call Mom now" in page
     r = client.post(f"/app/{p.id}/call")
     assert r.status_code == 200 and "Calling isn" in r.text  # no phone line on this copy
 
@@ -646,7 +650,7 @@ def test_call_now_dials_when_twilio_is_configured(env):
     _sign_in(client, messenger, "+1 555 0001")
     r = client.post(f"/app/{pid}/call")
     assert r.status_code == 200 and "Ringing Amma" in r.text
-    assert len(svc.telephony.placed) == 1 and svc.telephony.placed[0]["to"] == "+923001234567"
+    assert len(svc.telephony.placed) == 1 and svc.telephony.placed[0]["to"] == "+16145550101"
     # A second tap while the first is still ringing does not dial again.
     r = client.post(f"/app/{pid}/call")
     assert "Already on a call" in r.text and len(svc.telephony.placed) == 1
@@ -761,9 +765,9 @@ def test_hosted_demo_login_is_off_by_default_and_only_reaches_the_demo_family(en
     r = client.post("/demo")
     assert r.status_code == 303 and r.headers["location"] == "/app"
     page = client.get("/app").text
-    assert "Signed in as Daniyal" in page and "Dr Khan" in page  # the demo household
+    assert "Signed in as Daniel" in page and "Dr. Patel" in page  # the demo household
     # The real family from _setup is not reachable from the demo session.
-    real = next(p for p in svc.repo.list_parents() if p.phone == "+923001234567")
+    real = next(p for p in svc.repo.list_parents() if p.phone == "+16145550101")
     assert client.get(f"/app?parent={real.id}").status_code == 404
 
 
@@ -779,19 +783,19 @@ def test_dashboard_answers_the_two_questions_and_sorts_into_categories(env):
     """Is she okay, and do I need to do anything: both answered before any tap."""
     run(env, ["demo"])
     svc, messenger, client = _web(env)
-    _sign_in(client, messenger, "+1 555 010 0001")
-    pid = next(p for p in svc.repo.list_parents() if p.preferred_name == "Amma").id
+    _sign_in(client, messenger, "+1 614 555 0151")
+    pid = next(p for p in svc.repo.list_parents() if p.preferred_name == "Mom").id
 
     import html as _html
 
     home = _html.unescape(client.get("/app").text)
-    assert "Good " in home and "Daniyal" in home  # greeting
-    assert "Amma sounded okay" in home and "Nothing needs you right now." in home
-    for title in ("Amma's day", "Health", "Medication", "Appointments", "Needs you", "Follow-ups"):
+    assert "Good " in home and "Daniel" in home  # greeting
+    assert "Mom sounded okay" in home and "Nothing needs you right now." in home
+    for title in ("Mom's day", "Health", "Medication", "Appointments", "Needs you", "Follow-ups"):
         assert title in home, title
     # Tile lines carry the answer: computed from the demo data.
     assert "Taken today." in home or "Not asked yet today." in home
-    assert "Dr Khan" in home and "Nothing right now." in home
+    assert "Dr. Patel" in home and "Nothing right now." in home
     assert "mention" in home  # health line counts pain this week
 
     # Each category page opens, groups by day, and quotes her words.
@@ -803,7 +807,7 @@ def test_dashboard_answers_the_two_questions_and_sorts_into_categories(env):
     meds = client.get(f"/app/{pid}/c/medication").text
     assert "taken" in meds and "missed" in meds and "Today" in meds
     appts = client.get(f"/app/{pid}/c/appointments").text
-    assert "Dr Khan" in appts and "Remind her on" in appts
+    assert "Dr. Patel" in appts and "Remind her on" in appts
     assert client.get(f"/app/{pid}/c/nonsense").status_code == 404
 
     # Actions on a category page return to that page.
@@ -858,8 +862,8 @@ def test_dashboard_for_a_brand_new_parent(env):
 def test_one_shell_everywhere_trust_pages_and_live_call_status(env):
     run(env, ["demo"])
     svc, messenger, client = _web(env)
-    _sign_in(client, messenger, "+1 555 010 0001")
-    pid = next(p for p in svc.repo.list_parents() if p.preferred_name == "Amma").id
+    _sign_in(client, messenger, "+1 614 555 0151")
+    pid = next(p for p in svc.repo.list_parents() if p.preferred_name == "Mom").id
 
     # Every app page carries the same five tabs and (below home) a breadcrumb.
     call = svc.repo.recent_calls(pid, days=30)[0]
@@ -880,9 +884,9 @@ def test_one_shell_everywhere_trust_pages_and_live_call_status(env):
 
     # The calls timeline shows each day with its evidence; the home page has the next-call panel.
     calls = client.get(f"/app/{pid}/calls").text
-    assert "Read the full call" in calls and "took my tablet with chai" in calls
+    assert "Read the full call" in calls and "took my pill with coffee" in calls
     home = client.get("/app").text
-    assert "Next call" in home and "Dr Khan" in home and 'class="av' in home
+    assert "Next call" in home and "Thanksgiving" in home and 'class="av' in home
     assert "Have Sunday call now" in home
 
     # Urgency takes over the top of the page.
@@ -932,8 +936,8 @@ def test_onboarding_infers_timezone_and_validates_numbers_properly(env):
     r = client.post("/start", data=form)
     assert r.status_code == 200 and "Check your phone" in r.text
     (p,) = svc.repo.list_parents()
-    assert p.timezone == "Asia/Karachi" and p.phone == "+923001234567"
+    assert p.timezone == "America/New_York" and p.phone == "+16145550101"
     # A number that is impossible for its country is rejected with a plain message.
-    bad = dict(START, your_phone="+1 555", parent_phone="+92 300 7654321", timezone="")
+    bad = dict(START, your_phone="+1 555", parent_phone="+1 614 555 0199", timezone="")
     r = client.post("/start", data=bad)
     assert "doesn't look right" in r.text and len(svc.repo.list_parents()) == 1

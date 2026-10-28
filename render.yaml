@@ -1,4 +1,6 @@
-# Deploy to Render's free tier (no card needed):
+# Deploy to Render's free tier (no card needed). Sunday serves the United States only:
+# calls to numbers outside it are refused in code (see sunday/geo.py).
+#
 #   https://render.com/deploy?repo=https://github.com/Daniyal-Murtaza/agealth
 #
 # Free instances sleep after 15 minutes without traffic (about a minute to wake) and have

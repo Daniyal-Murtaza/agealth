@@ -20,9 +20,9 @@
           <div class="field"><label for="your_phone">Your mobile</label>
             <div class="phone-in">
               <select id="your_cc" aria-label="Country code" data-for="your_phone"></select>
-              <input id="your_phone" name="your_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+1 555 010 0001" value="{{ form.your_phone or '' }}" required>
+              <input id="your_phone" name="your_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(614) 555-0102" value="{{ form.your_phone or '' }}" required>
             </div>
-            <div class="hint">Notes and alerts come here on WhatsApp or SMS, and it is how you sign in. No password.</div>
+            <div class="hint">Notes and alerts come here by text or WhatsApp, and it is how you sign in. No password.</div>
             <div class="err" data-err="your_phone" hidden>That number doesn't look right for the country chosen.</div>
           </div>
           <div class="wnav"><span></span><button class="btn" type="button" data-next>Next: your parent</button></div>
@@ -32,34 +32,35 @@
           <h3>About your parent</h3>
           <div class="row">
             <div class="field"><label for="parent_name">Their name</label><input id="parent_name" name="parent_name" type="text" value="{{ form.parent_name or '' }}" required maxlength="80"></div>
-            <div class="field"><label for="call_me">What Sunday should call them</label><input id="call_me" name="call_me" type="text" placeholder="Amma, Baba, Mrs Khan" value="{{ form.call_me or '' }}" maxlength="40"></div>
+            <div class="field"><label for="call_me">What Sunday should call them</label><input id="call_me" name="call_me" type="text" placeholder="Mom, Dad, Grandma, Mrs. Walker" value="{{ form.call_me or '' }}" maxlength="40"></div>
           </div>
           <div class="field"><label for="parent_phone">Their phone</label>
             <div class="phone-in">
               <select id="parent_cc" aria-label="Country code" data-for="parent_phone"></select>
-              <input id="parent_phone" name="parent_phone" type="tel" inputmode="tel" placeholder="+92 300 1234567" value="{{ form.parent_phone or '' }}" required>
+              <input id="parent_phone" name="parent_phone" type="tel" inputmode="tel" placeholder="(614) 555-0101" value="{{ form.parent_phone or '' }}" required>
             </div>
-            <div class="hint">Any phone that rings. Landline or mobile. Nothing to install.</div>
+            <div class="hint">Any US phone that rings. Landline or cell. Nothing to install.</div>
             <div class="err" data-err="parent_phone" hidden>That number doesn't look right for the country chosen.</div>
+            <div class="hint">Sunday calls numbers in the United States for now. Family members who get the notes can be anywhere.</div>
           </div>
           <div class="row">
             <div class="field"><label for="language">Language</label>
               <select id="language" name="language">{% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if (form.language or 'en') == code }}>{{ name }}</option>{% endfor %}</select></div>
             <div class="field"><label for="call_time">Daily call time <span class="faint">(their local time)</span></label><input id="call_time" name="call_time" type="time" value="{{ form.call_time or '09:00' }}"></div>
             <div class="field"><label for="timezone">Their timezone</label>
-              <select id="timezone" name="timezone"><option value="">Work it out from their number</option>{% for tz in timezones %}<option value="{{ tz }}" {{ 'selected' if form.timezone == tz }}>{{ tz }}</option>{% endfor %}</select>
+              <select id="timezone" name="timezone"><option value="">Work it out from her area code</option>{% for tz in timezones %}<option value="{{ tz }}" {{ 'selected' if form.timezone == tz }}>{{ tz }}</option>{% endfor %}</select>
               <div class="hint" id="tzhint"></div></div>
           </div>
-          <div class="field"><label for="medications">Medications Sunday should ask about <span class="faint">(optional, comma separated)</span></label><input id="medications" name="medications" type="text" placeholder="blood pressure tablet, eye drops" value="{{ form.medications or '' }}" maxlength="200"></div>
+          <div class="field"><label for="medications">Medications Sunday should ask about <span class="faint">(optional, comma separated)</span></label><input id="medications" name="medications" type="text" placeholder="blood pressure pill, eye drops" value="{{ form.medications or '' }}" maxlength="200"></div>
           <div class="field"><label for="about">A few things Sunday should know <span class="faint">(optional, one per line)</span></label>
-            <textarea id="about" name="about" rows="3" placeholder="Grandchildren are Ayaan (7) and Zara (4).&#10;Neighbour Farida visits on Wednesdays.&#10;Her knee has bothered her since the winter.">{{ form.about or '' }}</textarea></div>
+            <textarea id="about" name="about" rows="3" placeholder="Grandchildren are Emma (7) and Noah (4).&#10;Linda next door stops by on Wednesdays.&#10;Her knee has bothered her since the winter.">{{ form.about or '' }}</textarea></div>
           <div class="wnav"><button class="btn ghost" type="button" data-prev>Back</button><button class="btn" type="button" data-next>Next: the first call</button></div>
         </fieldset>
 
         <fieldset class="wstep" data-step="3" style="border:0;padding:0;margin:0">
           <h3>The first call</h3>
           <p class="muted small">Here's how Sunday will greet <span data-echo="call_me">them</span>:</p>
-          <div class="preview"><div class="who">Sunday</div><div class="say" id="greet">Hello Amma, it's Sunday calling, the daily call from your son Daniyal. How are you today?</div></div>
+          <div class="preview"><div class="who">Sunday</div><div class="say" id="greet">Hello Mom, it's Sunday calling, the daily call from your son Daniel. How are you today?</div></div>
           <p class="small muted mt">After you finish here we send a sign-in link to your phone. On your page, tap <b>Have Sunday call now</b> while you are with them. Sunday introduces itself; you introduce Sunday. Daily calls start the next morning at <span data-echo="call_time">09:00</span>.</p>
           <div class="field mt"><label class="check">
             <input type="checkbox" name="confirm" value="yes" {{ 'checked' if form.confirm == 'yes' }}>
@@ -88,12 +89,12 @@
 (function () {
   // Country picker: common countries first. Formats as you type (digit groups), prefixes the
   // code, and infers the parent's timezone. Server-side libphonenumber is the real check.
-  var C = [["PK","Pakistan","92","Asia/Karachi"],["IN","India","91","Asia/Kolkata"],["BD","Bangladesh","880","Asia/Dhaka"],["GB","United Kingdom","44","Europe/London"],["US","United States","1","America/New_York"],["CA","Canada","1","America/Toronto"],["AE","UAE","971","Asia/Dubai"],["SA","Saudi Arabia","966","Asia/Riyadh"],["AU","Australia","61","Australia/Sydney"],["DE","Germany","49","Europe/Berlin"],["FR","France","33","Europe/Paris"],["NL","Netherlands","31","Europe/Amsterdam"],["IE","Ireland","353","Europe/Dublin"],["SG","Singapore","65","Asia/Singapore"],["MY","Malaysia","60","Asia/Kuala_Lumpur"],["ZA","South Africa","27","Africa/Johannesburg"],["NZ","New Zealand","64","Pacific/Auckland"],["LK","Sri Lanka","94","Asia/Colombo"],["NP","Nepal","977","Asia/Kathmandu"],["TR","Türkiye","90","Europe/Istanbul"]];
+  var C = [["US","United States","1","America/New_York"],["CA","Canada","1","America/Toronto"],["GB","United Kingdom","44","Europe/London"],["MX","Mexico","52","America/Mexico_City"],["IN","India","91","Asia/Kolkata"],["PK","Pakistan","92","Asia/Karachi"],["PH","Philippines","63","Asia/Manila"],["AE","UAE","971","Asia/Dubai"],["AU","Australia","61","Australia/Sydney"],["DE","Germany","49","Europe/Berlin"]];
   function flag(cc) { return String.fromCodePoint.apply(null, cc.split('').map(function (c) { return 127397 + c.charCodeAt(0); })); }
   function fill(sel, def) { C.forEach(function (c) { var o = document.createElement('option'); o.value = c[2]; o.dataset.tz = c[3]; o.dataset.cc = c[0]; o.textContent = flag(c[0]) + ' ' + c[1] + ' +' + c[2]; if (c[0] === def) o.selected = true; sel.appendChild(o); }); }
   function wire(sel, inp, onTz) {
     var isUS = /^\+1\b/.test(inp.value);
-    fill(sel, inp.value ? guess(inp.value) : (sel.id === 'parent_cc' ? 'PK' : 'US'));
+    fill(sel, inp.value ? guess(inp.value) : 'US');
     function guess(v) { var d = v.replace(/\D/g, ''); var best = null; C.forEach(function (c) { if (d.indexOf(c[2]) === 0 && (!best || c[2].length > best[2].length)) best = c; }); return best ? best[0] : 'US'; }
     function fmt() {
       var cc = sel.value, d = inp.value.replace(/\D/g, '');
@@ -124,8 +125,8 @@
   document.querySelectorAll('[data-prev]').forEach(function (b) { b.addEventListener('click', function () { show(cur - 1); }); });
   function val(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }
   function preview() {
-    var me = val('call_me') || (val('parent_name').split(' ')[0] || 'Amma'), who = (val('relation') && val('your_name')) ? 'your ' + val('relation') + ' ' + val('your_name') : 'your family';
-    var g = { en: 'Hello ' + me + ", it's Sunday calling, the daily call from " + who + '. How are you today?', ur: 'السلام علیکم ' + me + '، میں سنڈے ہوں، ' + who + ' کی طرف سے روز کی کال۔ آج آپ کیسی ہیں؟', hi: 'नमस्ते ' + me + ', मैं सनडे हूँ, ' + who + ' की तरफ़ से रोज़ का फ़ोन। आज आप कैसी हैं?', pa: 'ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ' + me + ', ਮੈਂ ਸੰਡੇ ਹਾਂ, ' + who + ' ਵੱਲੋਂ ਰੋਜ਼ ਦਾ ਫ਼ੋਨ। ਅੱਜ ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?' };
+    var me = val('call_me') || (val('parent_name').split(' ')[0] || 'Mom'), who = (val('relation') && val('your_name')) ? 'your ' + val('relation') + ' ' + val('your_name') : 'your family';
+    var g = { en: 'Hello ' + me + ", it's Sunday calling, the daily call from " + who + '. How are you today?', es: 'Hola ' + me + ', le habla Sunday, la llamada diaria de ' + who + '. ¿Cómo está hoy?', ur: 'السلام علیکم ' + me + '، میں سنڈے ہوں، ' + who + ' کی طرف سے روز کی کال۔ آج آپ کیسی ہیں؟', hi: 'नमस्ते ' + me + ', मैं सनडे हूँ, ' + who + ' की तरफ़ से रोज़ का फ़ोन। आज आप कैसी हैं?', pa: 'ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ' + me + ', ਮੈਂ ਸੰਡੇ ਹਾਂ, ' + who + ' ਵੱਲੋਂ ਰੋਜ਼ ਦਾ ਫ਼ੋਨ। ਅੱਜ ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?' };
     document.getElementById('greet').textContent = g[val('language')] || g.en;
     document.querySelectorAll('[data-echo]').forEach(function (e) { var v = val(e.dataset.echo); if (v) e.textContent = v; });
   }

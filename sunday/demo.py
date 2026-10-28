@@ -1,9 +1,10 @@
 """Seed a believable fortnight so the family page can be shown before the first real call.
 
-``sunday demo`` creates Amma, three family members, and fourteen days of
-calls with notes, observations, two alerts, a missed morning, memories and a
-queue for tomorrow. Everything is plainly labelled as demo data; it never
-touches a real parent. Deterministic, no model, no network.
+``sunday demo`` creates Mom (Rosemary Walker, Columbus, Ohio), three grown
+children, and fourteen days of calls with notes, observations, two alerts, a
+missed morning, memories and a queue for tomorrow. Everything is plainly
+labelled as demo data; it never touches a real parent. Deterministic, no
+model, no network.
 """
 
 from __future__ import annotations
@@ -13,47 +14,46 @@ from zoneinfo import ZoneInfo
 
 from sunday.repository import Repository
 
-PARENT_PHONE = "+92 300 0000 001"
+PARENT_PHONE = "+1 614 555 0150"
+PARENT_TZ = "America/New_York"
 FAMILY = [
     # name, relation, phone, tier, primary
-    ("Daniyal", "son", "+1 555 010 0001", "info", True),
-    ("Hira", "daughter", "+1 555 010 0002", "now", False),
-    ("Jamal", "son", "+44 7700 900 003", "today", False),
+    ("Daniel", "son", "+1 614 555 0151", "info", True),
+    ("Sarah", "daughter", "+1 312 555 0152", "now", False),
+    ("Michael", "son", "+1 206 555 0153", "today", False),
 ]
 
-# (days ago, mood, summary, observations, alerts, transcript)
+# (days ago, mood, summary, observations, alerts)
 DAYS: list[dict] = [
     dict(
         ago=13,
         mood="ok",
         summary=(
-            "Amma sounded okay. Took her tablet with chai. Slept alright. Asked after "
-            "Ayaan's school."
+            "Mom sounded okay. Took her blood pressure pill with her coffee. Slept alright. "
+            "Asked after Emma's soccer."
         ),
-        obs=[("medication", "took blood pressure tablet", "taken", "took it with my chai", False)],
+        obs=[("medication", "took blood pressure pill", "taken", "took it with my coffee", False)],
     ),
     dict(
         ago=12,
         mood="bright",
         summary=(
-            "Bright this morning. Farida came by with halwa. Tablet taken. Planning to sit "
-            "in the garden."
+            "Bright this morning. Linda from next door came by with banana bread. Pill taken. "
+            "Planning to sit on the porch."
         ),
         obs=[
-            ("medication", "took blood pressure tablet", "taken", "yes beta, taken", False),
-            ("social", "Farida visited with halwa", "", "Farida brought halwa", False),
+            ("medication", "took blood pressure pill", "taken", "yes honey, took it", False),
+            ("social", "Linda visited with banana bread", "", "Linda brought banana bread", False),
         ],
     ),
     dict(
         ago=11,
         mood="ok",
-        summary=(
-            "Okay. Slept a bit late. Tablet taken. The tap in the kitchen has started dripping."
-        ),
+        summary=("Okay. Slept a bit late. Pill taken. The kitchen faucet has started dripping."),
         obs=[
-            ("medication", "took blood pressure tablet", "taken", "I took it", False),
+            ("medication", "took blood pressure pill", "taken", "I took it", False),
             ("sleep", "slept late", "ok", "slept a bit late", False),
-            ("household", "kitchen tap dripping", "", "the tap is dripping", True),
+            ("household", "kitchen faucet dripping", "", "the faucet is dripping", True),
         ],
     ),
     dict(ago=10, missed=True),
@@ -61,10 +61,10 @@ DAYS: list[dict] = [
         ago=9,
         mood="low",
         summary=(
-            "A bit low today. Said the house is quiet. Tablet taken. The plumber has not come yet."
+            "A bit low today. Said the house is quiet. Pill taken. The plumber hasn't come yet."
         ),
         obs=[
-            ("medication", "took blood pressure tablet", "taken", "haan, le li", False),
+            ("medication", "took blood pressure pill", "taken", "yes, took it", False),
             ("mood", "house feels quiet", "low", "the house is so quiet these days", False),
             ("household", "plumber has not come", "", "the plumber still hasn't come", True),
         ],
@@ -73,11 +73,11 @@ DAYS: list[dict] = [
         ago=8,
         mood="ok",
         summary=(
-            "Okay. Knee bothering her a little on the stairs. Tablet taken. Plumber came "
-            "and fixed the tap."
+            "Okay. Knee bothering her a little on the stairs. Pill taken. Plumber came and "
+            "fixed the faucet."
         ),
         obs=[
-            ("medication", "took blood pressure tablet", "taken", "took it", False),
+            ("medication", "took blood pressure pill", "taken", "took it", False),
             (
                 "pain",
                 "knee bothering her on stairs",
@@ -85,20 +85,20 @@ DAYS: list[dict] = [
                 "my knee is bothering me a little on the stairs",
                 False,
             ),
-            ("household", "plumber came, tap fixed", "", "the plumber came, it's fixed", False),
+            ("household", "plumber came, faucet fixed", "", "the plumber came, it's fixed", False),
         ],
     ),
     dict(
         ago=7,
         mood="ok",
         summary=(
-            "Okay. Forgot her tablet this morning and took it during the call. Talked about "
-            "Zara's drawing."
+            "Okay. Forgot her pill this morning and took it during the call. Talked about "
+            "Noah's drawing."
         ),
         obs=[
             (
                 "medication",
-                "forgot tablet, took it during the call",
+                "forgot pill, took it during the call",
                 "missed",
                 "oh, I forgot it, let me take it now",
                 False,
@@ -109,11 +109,11 @@ DAYS: list[dict] = [
         ago=6,
         mood="ok",
         summary=(
-            "Knee hurt a lot today, she could barely get to the kitchen. Tablet taken. Hira "
-            "is visiting Thursday."
+            "Knee hurt a lot today, she could barely get to the kitchen. Pill taken. Sarah is "
+            "visiting Thursday."
         ),
         obs=[
-            ("medication", "took blood pressure tablet", "taken", "yes taken", False),
+            ("medication", "took blood pressure pill", "taken", "yes taken", False),
             (
                 "pain",
                 "severe knee pain, difficulty walking",
@@ -126,7 +126,7 @@ DAYS: list[dict] = [
             (
                 "today",
                 "pain",
-                "Amma mentioned significant pain today.",
+                "Mom mentioned significant pain today.",
                 "my knee hurts so much today I could barely walk to the kitchen",
             )
         ],
@@ -135,11 +135,11 @@ DAYS: list[dict] = [
         ago=5,
         mood="ok",
         summary=(
-            "Knee a little better. Tablet taken. Looking forward to Hira's visit. Asked "
-            "Sunday to remind her about the clinic."
+            "Knee a little better. Pill taken. Looking forward to Sarah's visit. Asked Sunday "
+            "to remind her about the clinic."
         ),
         obs=[
-            ("medication", "took blood pressure tablet", "taken", "le li beta", False),
+            ("medication", "took blood pressure pill", "taken", "took it, honey", False),
             ("pain", "knee a little better", "mild", "the knee is a bit better today", False),
         ],
     ),
@@ -147,23 +147,23 @@ DAYS: list[dict] = [
         ago=4,
         mood="bright",
         summary=(
-            "Bright. Hira visited with the children. Tablet taken. Ate well: biryani for lunch."
+            "Bright. Sarah visited with the kids. Pill taken. Ate well: pot roast for dinner."
         ),
         obs=[
-            ("medication", "took blood pressure tablet", "taken", "yes, with breakfast", False),
-            ("meal", "biryani for lunch", "", "we had biryani", False),
-            ("social", "Hira and the children visited", "", "Hira came with the children", False),
+            ("medication", "took blood pressure pill", "taken", "yes, with breakfast", False),
+            ("meal", "pot roast for dinner", "", "we had pot roast", False),
+            ("social", "Sarah and the kids visited", "", "Sarah came with the kids", False),
         ],
     ),
     dict(
         ago=3,
         mood="ok",
         summary=(
-            "Okay. Tablet taken. Slept well. Said yes to the lift to the clinic on Tuesday, "
+            "Okay. Pill taken. Slept well. Said yes to the ride to the clinic on Tuesday, "
             "after eleven."
         ),
         obs=[
-            ("medication", "took blood pressure tablet", "taken", "taken", False),
+            ("medication", "took blood pressure pill", "taken", "taken", False),
             ("sleep", "slept well", "good", "slept well", False),
         ],
     ),
@@ -171,13 +171,13 @@ DAYS: list[dict] = [
         ago=2,
         mood="ok",
         summary=(
-            "Clinic went fine, Dr Khan is happy with the blood pressure. Tablet taken. "
-            "Tired afterwards."
+            "Clinic went fine, Dr. Patel is happy with the blood pressure. Pill taken. Tired "
+            "afterwards."
         ),
         obs=[
             (
                 "medication",
-                "took blood pressure tablet",
+                "took blood pressure pill",
                 "taken",
                 "yes I took it before we left",
                 False,
@@ -195,61 +195,62 @@ DAYS: list[dict] = [
         ago=1,
         mood="ok",
         summary=(
-            "Okay. Tablet taken. Slept a bit late. Wants to know when Jamal is next calling "
-            "from London."
+            "Okay. Pill taken. Slept a bit late. Wants to know when Michael is next calling "
+            "from Seattle."
         ),
         obs=[
-            ("medication", "took blood pressure tablet", "taken", "took it with chai", False),
+            ("medication", "took blood pressure pill", "taken", "took it with coffee", False),
             ("sleep", "slept late", "ok", "slept a bit late", False),
-            ("social", "asked when Jamal will call", "", "when is Jamal calling", True),
+            ("social", "asked when Michael will call", "", "when is Michael calling", True),
         ],
     ),
     dict(
         ago=0,
         mood="ok",
         summary=(
-            "Okay this morning. Took her tablet with chai. Paratha for breakfast. Asked "
-            "after Zara's cough."
+            "Okay this morning. Took her pill with coffee. Oatmeal for breakfast. Asked after "
+            "Noah's cough."
         ),
         obs=[
             (
                 "medication",
-                "took blood pressure tablet",
+                "took blood pressure pill",
                 "taken",
-                "took my tablet with chai",
+                "took my pill with coffee",
                 False,
             ),
-            ("meal", "paratha and chai", "", "just paratha and chai", False),
+            ("meal", "oatmeal and coffee", "", "just oatmeal and coffee", False),
         ],
     ),
 ]
 
 MEMORIES = [
-    ("Grandchildren are Ayaan (7) and Zara (4).", "family"),
-    ("Neighbour Farida visits most Wednesdays, usually with something sweet.", "social"),
+    ("Grandchildren are Emma (7) and Noah (4).", "family"),
+    ("Linda next door stops by most Wednesdays, usually with something baked.", "social"),
     ("Her knee has bothered her since the winter; stairs are the hard part.", "health"),
-    ("Dr Khan at the clinic looks after her blood pressure.", "health"),
-    ("Jamal lives in London and calls on Sundays.", "family"),
-    ("Likes to sit in the garden after breakfast when it is not too hot.", "likes"),
+    ("Dr. Patel at the clinic on High Street looks after her blood pressure.", "health"),
+    ("Michael lives in Seattle and calls on Sundays.", "family"),
+    ("Likes to sit on the porch after breakfast when it's not too cold.", "likes"),
+    ("Goes to church on Sunday mornings; the call should be after eleven that day.", "routine"),
 ]
 
 TURNS_TEMPLATE = [
     (
         "sunday",
-        "Hello Amma, it's Sunday calling, the daily call from your son Daniyal. How are you today?",
+        "Hello Mom, it's Sunday calling, the daily call from your son Daniel. How are you today?",
     ),
-    ("parent", "I'm alright beta. {first}"),
+    ("parent", "I'm alright, honey. {first}"),
     ("sunday", "I'm glad to hear it. {second}"),
     ("parent", "{third}"),
     ("sunday", "That sounds good. Did you sleep alright last night?"),
     ("parent", "Slept okay, a bit late."),
     ("sunday", "Have you eaten something this morning?"),
-    ("parent", "Just paratha and chai."),
+    ("parent", "Just oatmeal and coffee."),
     ("sunday", "Lovely. What are you planning to do today?"),
-    ("parent", "Sit in the garden for a while if it's not too hot."),
+    ("parent", "Sit on the porch for a while if it's not too cold."),
     (
         "sunday",
-        "It was lovely talking to you, Amma. I'll let the family know you're well. Speak tomorrow.",
+        "It was lovely talking to you, Mom. I'll let the family know you're well. Speak tomorrow.",
     ),
 ]
 
@@ -262,14 +263,14 @@ def seed_demo(repo: Repository) -> str:
         return existing.id
 
     parent = repo.add_parent(
-        name="Fatima Zaidi",
-        preferred_name="Amma",
+        name="Rosemary Walker",
+        preferred_name="Mom",
         phone=PARENT_PHONE,
         language="en",
-        timezone="Asia/Karachi",
+        timezone=PARENT_TZ,
         call_time="09:00",
-        medications=[{"name": "blood pressure tablet", "when": "morning"}],
-        introduced_by="your son Daniyal",
+        medications=[{"name": "blood pressure pill", "when": "morning"}],
+        introduced_by="your son Daniel",
         notes="Demo data. Not a real person.",
     )
     for name, relation, phone, tier, primary in FAMILY:
@@ -286,12 +287,12 @@ def seed_demo(repo: Repository) -> str:
         repo.add_memory(parent.id, text, topic=topic, source="family")
 
     now = datetime.now(UTC)
-    khi = ZoneInfo("Asia/Karachi")
-    today = now.astimezone(khi).date()
+    tz = ZoneInfo(PARENT_TZ)
+    today = now.astimezone(tz).date()
 
     def morning(ago: int, hh: int = 9, mm: int = 4) -> datetime:
-        # Anchor on Amma's local day so the fortnight strip is the same at any UTC hour.
-        return datetime.combine(today - timedelta(days=ago), time(hh, mm), tzinfo=khi).astimezone(
+        # Anchor on Mom's local day so the fortnight strip is the same at any UTC hour.
+        return datetime.combine(today - timedelta(days=ago), time(hh, mm), tzinfo=tz).astimezone(
             UTC
         )
 
@@ -314,7 +315,7 @@ def seed_demo(repo: Repository) -> str:
             notified_at=at + timedelta(minutes=8),
         )
         first = day["obs"][0][3].capitalize() + "." if day.get("obs") else "All fine."
-        second = "Did you take your blood pressure tablet this morning?"
+        second = "Did you take your blood pressure pill this morning?"
         third = day["obs"][0][3] if day.get("obs") else "Yes, taken."
         for speaker, text in TURNS_TEMPLATE:
             repo.add_turn(c.id, speaker, text.format(first=first, second=second, third=third))
@@ -346,7 +347,7 @@ def seed_demo(repo: Repository) -> str:
                 row = s.get(Alert, a.id)
                 row.at = at + timedelta(minutes=3)
                 row.notified_at = at + timedelta(minutes=3)
-                row.acknowledged_by = "Daniyal" if day["ago"] > 2 else ""
+                row.acknowledged_by = "Daniel" if day["ago"] > 2 else ""
 
     # The missed morning raised a note that the family has already seen.
     missed = next(d for d in DAYS if d.get("missed"))
@@ -355,7 +356,7 @@ def seed_demo(repo: Repository) -> str:
         parent.id,
         tier="today",
         kind="no_answer",
-        text="Amma did not answer this morning. Worth a call.",
+        text="Mom did not answer this morning. Worth a call.",
     )
     with repo.session() as s:
         from sunday.models import Alert
@@ -363,20 +364,20 @@ def seed_demo(repo: Repository) -> str:
         row = s.get(Alert, a.id)
         row.at = at
         row.notified_at = at
-        row.acknowledged_by = "Hira"
+        row.acknowledged_by = "Sarah"
 
-    repo.queue_message(parent.id, from_name="Hira", text="I'll call Thursday after work.")
+    repo.queue_message(parent.id, from_name="Sarah", text="I'll call Thursday after work.")
     repo.queue_message(
         parent.id,
-        from_name="Jamal",
+        from_name="Michael",
         kind="ask",
-        text="Would she like us to come for Eid, or come to London?",
+        text="Would she like to come to Seattle for Thanksgiving, or should we come to her?",
     )
     repo.queue_message(
         parent.id,
-        from_name="Daniyal",
+        from_name="Daniel",
         kind="remind",
-        text="Dr Khan's follow-up is Tuesday at 10. Daniyal will pick you up at 9:30.",
+        text="Dr. Patel's follow-up is Tuesday at 10. Daniel will pick you up at 9:30.",
         remind_on=(now + timedelta(days=5)).date(),
     )
     return parent.id

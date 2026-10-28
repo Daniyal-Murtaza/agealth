@@ -1,10 +1,10 @@
 """Command line.
 
-    sunday parent add --name "Fatima Zaidi" --phone +1555... --language ur --time 09:00 \\
-        --call-me Amma --introduced-by "your son Daniyal"
-    sunday family add <parent_id> --name Daniyal --phone +1555... --relation son --alerts info
-    sunday med add <parent_id> "blood pressure tablet" --when morning
-    sunday memory add <parent_id> "Grandchildren are Ayaan (7) and Zara (4)."
+    sunday parent add --name "Rosemary Walker" --phone "(614) 555-0101" --time 09:00 \\
+        --call-me Mom --introduced-by "your son Daniel"
+    sunday family add <parent_id> --name Daniel --phone "(614) 555-0102" --relation son
+    sunday med add <parent_id> "blood pressure pill" --when morning
+    sunday memory add <parent_id> "Grandchildren are Emma (7) and Noah (4)."
     sunday message <parent_id> --from Hira "I'll call Thursday after work."
     sunday simulate <parent_id>          talk to Sunday as the parent, in your terminal
     sunday call <parent_id>              place a real call (needs Twilio)
@@ -91,17 +91,28 @@ def _main(ctx: typer.Context, version: bool = typer.Option(False, "--version")) 
 @parent_app.command("add")
 def parent_add(
     name: str = typer.Option(..., "--name"),
-    phone: str = typer.Option(..., "--phone", help="E.164, e.g. +923001234567"),
-    language: str = typer.Option("en", "--language", help="en, ur, hi, pa ..."),
+    phone: str = typer.Option(..., "--phone", help="US number, e.g. +1 614 555 0101"),
+    language: str = typer.Option("en", "--language", help="en, es, ur, hi, pa"),
     time: str = typer.Option("09:00", "--time", help="Local call time HH:MM"),
-    timezone: str = typer.Option("UTC", "--timezone", help="e.g. Asia/Karachi"),
-    call_me: str = typer.Option("", "--call-me", help="How to address them, e.g. Amma"),
-    introduced_by: str = typer.Option("", "--introduced-by", help="e.g. 'your son Daniyal'"),
+    timezone: str = typer.Option(
+        "UTC", "--timezone", help="e.g. America/Chicago; worked out from the number if omitted"
+    ),
+    call_me: str = typer.Option("", "--call-me", help="How to address them, e.g. Mom"),
+    introduced_by: str = typer.Option("", "--introduced-by", help="e.g. 'your son Daniel'"),
     notes: str = typer.Option("", "--notes"),
     db: Path | None = DbOpt,
 ) -> None:
-    """Add a parent to call."""
+    """Add a parent to call. US numbers only for now."""
+    from sunday.geo import OutsideServiceAreaError, check_callable, e164, timezone_for
+
     svc = _services(db)
+    phone = e164(phone if phone.startswith("+") else f"+1 {phone}")
+    try:
+        check_callable(phone)
+    except OutsideServiceAreaError as exc:
+        _fail(str(exc))
+    if timezone == "UTC":
+        timezone = timezone_for(phone) or "America/New_York"
     p = svc.repo.add_parent(
         name=name,
         phone=phone,
@@ -249,7 +260,12 @@ def call(parent_id: str, db: Path | None = DbOpt) -> None:
         )
     if not svc.settings.public_url:
         _fail("SUNDAY_PUBLIC_URL is not set; Twilio must be able to reach `sunday serve`.")
-    call_id = dial(svc.repo, svc.telephony, svc.settings, p)
+    from sunday.geo import OutsideServiceAreaError
+
+    try:
+        call_id = dial(svc.repo, svc.telephony, svc.settings, p)
+    except OutsideServiceAreaError as exc:
+        _fail(str(exc))
     console.print(f"Dialing {p.phone} ... call id {call_id}. Watch `sunday serve` logs.")
 
 
@@ -263,11 +279,21 @@ def due(db: Path | None = DbOpt, dry_run: bool = typer.Option(False, "--dry-run"
     if not parents and not digests:
         console.print("Nobody is due right now.")
         return
+    from sunday.geo import OutsideServiceAreaError, is_callable
+
     for p in parents:
+        if not is_callable(p.phone):
+            console.print(
+                f"[yellow]skipping {p.name}: {p.phone} is outside the service area[/yellow]"
+            )
+            continue
         if dry_run or not svc.settings.twilio_ready():
             console.print(f"would call {p.name} ({p.phone}) now")
         else:
-            console.print(f"calling {p.name}: {dial(svc.repo, svc.telephony, svc.settings, p)}")
+            try:
+                console.print(f"calling {p.name}: {dial(svc.repo, svc.telephony, svc.settings, p)}")
+            except OutsideServiceAreaError as exc:
+                console.print(f"[yellow]{exc}[/yellow]")
     for p in digests:
         if dry_run:
             console.print(f"would send {p.address()}'s weekly report now")
@@ -409,7 +435,7 @@ def demo(db: Path | None = DbOpt) -> None:
 
     svc = _services(db)
     pid = seed_demo(svc.repo)
-    console.print(f"Demo parent ready: {pid} (Amma).")
+    console.print(f'Demo parent ready: {pid} (Rosemary Walker, "Mom").')
     console.print("Sign in to the family page with one of these numbers:")
     for name, relation, phone, _tier, _primary in FAMILY:
         console.print(f"  {phone}   {name}, {relation}")

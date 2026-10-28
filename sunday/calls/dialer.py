@@ -87,7 +87,11 @@ class FakeTelephony:
 
 
 def dial(repo: Repository, telephony: Telephony, settings: Settings, parent: Parent) -> str:
-    """Create the Call record and ask the provider to ring. Returns the call id."""
+    """Create the Call record and ask the provider to ring. Returns the call id.
+    Refuses, before anything is created, to ring a number outside the service area."""
+    from sunday.geo import check_callable
+
+    check_callable(parent.phone)
     call = repo.create_call(parent.id, status="scheduled", scheduled_for=datetime.now(UTC))
     base = (settings.public_url or "http://localhost:8000").rstrip("/")
     sid = telephony.place_call(

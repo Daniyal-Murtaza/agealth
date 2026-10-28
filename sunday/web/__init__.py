@@ -56,6 +56,15 @@ from sunday.brain.conversation import LANGUAGE_NAMES
 from sunday.calls.dialer import dial, record_outcome
 from sunday.calls.session import CallSession
 from sunday.calls.transport import twilio_router
+from sunday.geo import (
+    SERVICE_AREA_NAME,
+    US_TIMEZONES,
+    OutsideServiceAreaError,
+    e164,
+    is_callable,
+    pretty,
+    timezone_for,
+)
 from sunday.logging_setup import get_logger
 from sunday.notify.digest import compute_trends, format_digest
 from sunday.notify.pipeline import notify_no_answer
@@ -115,6 +124,8 @@ def create_app(services: Services) -> FastAPI:
         static_v=_static_version(),
         public_url=public_url,
         hue=lambda name: sum(ord(c) for c in (name or "").lower()) % 6,
+        pretty=pretty,
+        service_area=SERVICE_AREA_NAME,
     )
 
     def render(request: Request, name: str, **ctx) -> HTMLResponse:
@@ -166,6 +177,8 @@ def create_app(services: Services) -> FastAPI:
             errors.append("Too many sign-ups from this connection. Please try again later.")
         if errors:
             return render(request, "start.html", timezones=_TIMEZONES, errors=errors, form=form)
+        form["your_phone"] = _us_e164(form["your_phone"])
+        form["parent_phone"] = _us_e164(form["parent_phone"])
         your_digits = digits_only(form["your_phone"])
         if repo.parent_by_phone(form["parent_phone"]) or auth.members_for_phone(your_digits):
             # Already set up: do not create a second household; send the sign-in link.
@@ -178,7 +191,9 @@ def create_app(services: Services) -> FastAPI:
             preferred_name=form.get("call_me") or form["parent_name"].split()[0],
             phone=_e164(form["parent_phone"]),
             language=form.get("language", "en"),
-            timezone=form.get("timezone") or _tz_for_phone(form["parent_phone"]) or "UTC",
+            timezone=form.get("timezone")
+            or timezone_for(form["parent_phone"])
+            or "America/New_York",
             call_time=form.get("call_time", "09:00"),
             introduced_by=f"your {form['relation']} {form['your_name']}".strip(),
             medications=[
@@ -677,7 +692,12 @@ def create_app(services: Services) -> FastAPI:
             return render(
                 request, "call_now.html", placed=True, call_id=live[0].id, busy=True, **common
             )
-        call_id = dial(repo, services.telephony, settings, p)
+        try:
+            call_id = dial(repo, services.telephony, settings, p)
+        except OutsideServiceAreaError as exc:
+            return render(
+                request, "call_now.html", placed=False, call_id="", outside=str(exc), **common
+            )
         return render(request, "call_now.html", placed=True, call_id=call_id, **common)
 
     @app.get("/app/{pid}/calls/{call_id}/status.json")
@@ -821,6 +841,9 @@ def create_app(services: Services) -> FastAPI:
         return session
 
     def make_inbound_session(from_number: str, call_sid: str) -> CallSession | None:
+        if not is_callable(from_number):
+            log.warning("inbound call from outside the service area: %s", from_number)
+            return None
         parent = repo.parent_by_phone(from_number)
         if parent is None:
             return None
@@ -908,73 +931,36 @@ def _static_version() -> str:
     return hashlib.sha1(css).hexdigest()[:10]
 
 
-_COMMON_TZ = [
-    "Asia/Karachi",
-    "Asia/Kolkata",
-    "Asia/Dhaka",
-    "Asia/Dubai",
-    "Europe/London",
-    "Europe/Paris",
-    "America/New_York",
-    "America/Chicago",
-    "America/Denver",
-    "America/Los_Angeles",
-    "America/Toronto",
-    "Australia/Sydney",
-    "UTC",
-]
+_COMMON_TZ = list(US_TIMEZONES)
 _TIMEZONES = _COMMON_TZ + sorted(
     t for t in available_timezones() if "/" in t and not t.startswith("Etc") and t not in _COMMON_TZ
 )
 
 
-def _e164(phone: str) -> str:
-    """Normalise to E.164 with libphonenumber; falls back to +digits for odd input."""
+_e164 = e164
+
+
+def _us_e164(phone: str) -> str:
+    """Read a number the way an American types it: (614) 555-0101 means +1 614 555 0101."""
     import phonenumbers
 
     try:
-        n = phonenumbers.parse(phone, None)
+        n = phonenumbers.parse(phone, "US")
         return phonenumbers.format_number(n, phonenumbers.PhoneNumberFormat.E164)
     except phonenumbers.NumberParseException:
-        digits = digits_only(phone)
-        return f"+{digits}" if digits else phone.strip()
+        return phone.strip()
 
 
 def _valid_phone(phone: str) -> bool:
     """Structurally possible for its country (length and prefix). Not "assigned": that would
-    reject test ranges and some brand-new mobile blocks, which is worse than letting a typo
-    through to the introductory call, where it is caught by a human."""
+    reject test ranges and some brand-new blocks, which is worse than letting a typo through
+    to the introductory call, where a human catches it. Numbers without a + are read as US."""
     import phonenumbers
 
     try:
-        return phonenumbers.is_possible_number(phonenumbers.parse(phone, None))
+        return phonenumbers.is_possible_number(phonenumbers.parse(phone, "US"))
     except phonenumbers.NumberParseException:
         return False
-
-
-# Where a parent most likely lives, from the country their phone belongs to. The form
-# offers this as the default and a short list to change it; nobody has to scroll past
-# Antarctica/Troll to find Karachi.
-_TZ_BY_REGION = {
-    "PK": "Asia/Karachi", "IN": "Asia/Kolkata", "BD": "Asia/Dhaka", "LK": "Asia/Colombo",
-    "NP": "Asia/Kathmandu", "AE": "Asia/Dubai", "SA": "Asia/Riyadh", "QA": "Asia/Qatar",
-    "GB": "Europe/London", "IE": "Europe/Dublin", "FR": "Europe/Paris", "DE": "Europe/Berlin",
-    "NL": "Europe/Amsterdam", "ES": "Europe/Madrid", "IT": "Europe/Rome", "TR": "Europe/Istanbul",
-    "US": "America/New_York", "CA": "America/Toronto", "MX": "America/Mexico_City",
-    "AU": "Australia/Sydney", "NZ": "Pacific/Auckland", "SG": "Asia/Singapore",
-    "MY": "Asia/Kuala_Lumpur", "ZA": "Africa/Johannesburg", "KE": "Africa/Nairobi",
-    "NG": "Africa/Lagos", "EG": "Africa/Cairo",
-}  # fmt: skip
-
-
-def _tz_for_phone(phone: str) -> str | None:
-    import phonenumbers
-
-    try:
-        region = phonenumbers.region_code_for_number(phonenumbers.parse(phone, None))
-    except phonenumbers.NumberParseException:
-        return None
-    return _TZ_BY_REGION.get(region or "")
 
 
 def _validate_start(form: dict) -> list[str]:
@@ -985,14 +971,18 @@ def _validate_start(form: dict) -> list[str]:
         errors.append("Please say how you are related (son, daughter, niece...).")
     if not _valid_phone(form.get("your_phone", "")):
         errors.append(
-            "Your mobile number doesn't look right. Include the country code, like +1 555 010 0001."
+            "Your mobile number doesn't look right. Include the area code, like (614) 555-0102."
         )
     if len(form.get("parent_name", "")) < 2:
         errors.append("Please tell us your parent's name.")
     if not _valid_phone(form.get("parent_phone", "")):
         errors.append(
-            "Your parent's number doesn't look right. Include the country code, "
-            "like +92 300 1234567."
+            "Your parent's number doesn't look right. Include the area code, like (614) 555-0101."
+        )
+    elif not is_callable(form.get("parent_phone", "")):
+        errors.append(
+            f"Sunday calls numbers in {SERVICE_AREA_NAME} only for now. "
+            "Your parent's number is outside that."
         )
     if digits_only(form.get("your_phone", "")) == digits_only(form.get("parent_phone", "")):
         errors.append("Your number and your parent's number are the same.")

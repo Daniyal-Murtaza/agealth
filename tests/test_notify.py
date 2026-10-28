@@ -22,7 +22,7 @@ def world():
     parent = repo.add_parent(
         name="Fatima Zaidi",
         preferred_name="Amma",
-        phone="+15551234567",
+        phone="+16145550101",
         medications=[{"name": "BP tablet", "when": "morning"}],
     )
     repo.add_family_member(
@@ -388,14 +388,14 @@ def test_weekly_digest_is_due_on_sunday_evening_once(world):
     from sunday.scheduler import digest_due, digest_due_parents
 
     repo, parent, _ = world
-    repo.update_parent(parent.id, timezone="Asia/Karachi")
+    repo.update_parent(parent.id, timezone="America/New_York")
     parent = repo.get_parent(parent.id)
-    khi = ZoneInfo("Asia/Karachi")
+    khi = ZoneInfo("America/New_York")
     sunday_evening = datetime(2026, 11, 1, 18, 30, tzinfo=khi)  # a Sunday
     assert digest_due(parent, now=sunday_evening)
     assert not digest_due(parent, now=sunday_evening.replace(hour=9))  # morning
     assert not digest_due(parent, now=sunday_evening - timedelta(days=1))  # Saturday
-    # 18:30 Karachi is 13:30 UTC; a naive UTC clock must agree with the local one.
+    # 18:30 New York is 23:30 UTC; a naive UTC clock must agree with the local one.
     assert digest_due(parent, now=sunday_evening.astimezone(UTC))
     assert [p.id for p in digest_due_parents(repo, now=sunday_evening)] == [parent.id]
 
@@ -435,9 +435,9 @@ def test_one_retry_then_leave_them_alone_for_the_day(world):
     from sunday.scheduler import is_due
 
     repo, parent, _ = world
-    repo.update_parent(parent.id, timezone="Asia/Karachi", call_time="09:00")
+    repo.update_parent(parent.id, timezone="America/New_York", call_time="09:00")
     parent = repo.get_parent(parent.id)
-    khi = ZoneInfo("Asia/Karachi")
+    khi = ZoneInfo("America/New_York")
     t0 = datetime(2026, 11, 2, 9, 2, tzinfo=khi)
     assert is_due(parent, repo, now=t0)
     c1 = repo.create_call(parent.id, status="scheduled", scheduled_for=t0.astimezone(UTC))

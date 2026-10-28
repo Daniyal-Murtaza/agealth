@@ -17,7 +17,7 @@ def parent(repo):
     return repo.add_parent(
         name="Fatima Zaidi",
         preferred_name="Amma",
-        phone="+15551234567",
+        phone="+16145550101",
         language="ur",
         call_time="09:00",
         medications=[{"name": "blood pressure tablet", "when": "morning"}],
@@ -130,8 +130,8 @@ def test_queued_messages_and_memories(repo, parent):
 
 
 def test_parent_by_phone_matches_on_digits(repo, parent):
-    assert repo.parent_by_phone("+1 (555) 123-4567").id == parent.id
-    assert repo.parent_by_phone("15551234567").id == parent.id
+    assert repo.parent_by_phone("+1 (614) 555-0101").id == parent.id
+    assert repo.parent_by_phone("16145550101").id == parent.id
     assert repo.parent_by_phone("+15550000000") is None
     assert repo.parent_by_phone("") is None
 

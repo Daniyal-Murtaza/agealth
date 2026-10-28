@@ -71,14 +71,14 @@ INBOUND_PLAN: tuple[PlanItem, ...] = (
     "close",
 )
 
+# Only languages with a full set of fixed lines (opening, closing, emergency script,
+# recording notice) are offered; the model converses in any of them.
 LANGUAGE_NAMES = {
     "en": "English",
+    "es": "Spanish",
     "ur": "Urdu",
     "hi": "Hindi",
     "pa": "Punjabi",
-    "es": "Spanish",
-    "ar": "Arabic",
-    "bn": "Bengali",
 }
 
 
@@ -227,6 +227,7 @@ RECORDING_NOTICE = {
     "ur": "یہ کال گھر والوں کے لیے ریکارڈ ہو رہی ہے، جیسا آپ نے کہا تھا۔",
     "hi": "यह कॉल घरवालों के लिए रिकॉर्ड हो रही है, जैसा आपने कहा था।",
     "pa": "ਇਹ ਕਾਲ ਘਰਦਿਆਂ ਲਈ ਰਿਕਾਰਡ ਹੋ ਰਹੀ ਹੈ, ਜਿਵੇਂ ਤੁਸੀਂ ਕਿਹਾ ਸੀ।",
+    "es": "Esta llamada se graba para la familia, como usted aceptó.",
 }
 
 
@@ -238,6 +239,7 @@ def inbound_opening_line(ctx: CallContext) -> str:
         "ur": f"السلام علیکم {me}، میں سنڈے ہوں۔ آپ نے فون کیا، بہت اچھا لگا۔ آپ کیسی ہیں؟",
         "hi": f"नमस्ते {me}, मैं सनडे हूँ। आपने फ़ोन किया, बहुत अच्छा लगा। आप कैसी हैं?",
         "pa": f"ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ {me}, ਮੈਂ ਸੰਡੇ ਹਾਂ। ਤੁਸੀਂ ਫ਼ੋਨ ਕੀਤਾ, ਬਹੁਤ ਚੰਗਾ ਲੱਗਿਆ। ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?",
+        "es": f"Hola {me}, soy Sunday. Qué alegría que llame. ¿Cómo está?",
     }
     return lines.get(ctx.parent.language, lines["en"])
 
@@ -252,6 +254,7 @@ def opening_line(ctx: CallContext) -> str:
         "ur": f"السلام علیکم {me}، میں سنڈے ہوں، {who} کی طرف سے روز کی کال۔ آج آپ کیسی ہیں؟",
         "hi": f"नमस्ते {me}, मैं सनडे हूँ, {who} की तरफ़ से रोज़ का फ़ोन। आज आप कैसी हैं?",
         "pa": f"ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ {me}, ਮੈਂ ਸੰਡੇ ਹਾਂ, {who} ਵੱਲੋਂ ਰੋਜ਼ ਦਾ ਫ਼ੋਨ। ਅੱਜ ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?",
+        "es": f"Hola {me}, le habla Sunday, la llamada diaria de {who}. ¿Cómo está hoy?",
     }
     return lines.get(p.language, lines["en"])
 

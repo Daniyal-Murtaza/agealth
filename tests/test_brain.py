@@ -473,12 +473,12 @@ def test_today_triggers_soften_when_food_is_coming_or_pain_is_denied():
     assert [s.tier for s in keyword_signals("no pain but I fell")] == ["now"]
 
     assert country_from_phone("+923001234567") == "PK"
-    assert country_from_phone("+1 555 123 4567") == "US"
-    assert country_from_phone("+447700900000") == "GB"
+    assert country_from_phone("+1 614 555 0101") == "US"
+    assert country_from_phone("+44 20 7946 0958") == "GB"
     assert country_from_phone("03001234567") is None  # not E.164: unknown
     assert emergency_number_for("+923001234567") == "1122"
     assert emergency_number_for("+919876543210") == "112"
-    assert emergency_number_for("+15551234567") == "911"
+    assert emergency_number_for("+16145550101") == "911"
     assert emergency_number_for(None) == "911"
 
 

@@ -67,6 +67,10 @@ CLOSING_LINES = {
         "کل بات ہوگی۔"
     ),
     "hi": ("{name}, आपसे बात करके बहुत अच्छा लगा। मैं घरवालों को बता दूँगी कि आप ठीक हैं। कल बात होगी।"),
+    "es": (
+        "Fue un gusto hablar con usted, {name}. Le diré a la familia que está bien. "
+        "Hablamos mañana."
+    ),
 }
 # Used instead when something was flagged this call: do not tell them "you're well".
 CLOSING_LINES_CONCERN = {
@@ -79,6 +83,10 @@ CLOSING_LINES_CONCERN = {
         "کل بات ہوگی۔"
     ),
     "hi": ("{name}, आपसे बात करके बहुत अच्छा लगा। मैं घरवालों को बताऊँगी कि आज आप कैसी हैं। कल बात होगी।"),
+    "es": (
+        "Fue un gusto hablar con usted, {name}. Le contaré a la familia cómo está hoy. "
+        "Hablamos mañana."
+    ),
 }
 FALLBACK_LINES = {
     "en": (
@@ -90,6 +98,9 @@ FALLBACK_LINES = {
         "کل دوبارہ فون کروں گی۔"
     ),
     "hi": ("माफ़ कीजिए, आज मुझे सुनने में थोड़ी दिक़्क़त हो रही है। मैं घरवालों को बता दूँगी और कल फिर फ़ोन करूँगी।"),
+    "es": (
+        "Disculpe, hoy me cuesta un poco oír. Le avisaré a la familia y volveré a llamar mañana."
+    ),
 }
 
 

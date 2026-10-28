@@ -23,7 +23,7 @@ def world():
     parent = repo.add_parent(
         name="Fatima Zaidi",
         preferred_name="Amma",
-        phone="+15551234567",
+        phone="+16145550101",
         language="en",
         medications=[{"name": "BP tablet", "when": "morning"}],
         introduced_by="your son Daniyal",
@@ -279,7 +279,8 @@ def test_now_alert_is_handed_out_during_the_call_and_number_matches_country(worl
     repo, _, settings = world
     parent = repo.add_parent(
         name="Khalida", preferred_name="Ammi", phone="+923001234567", language="en"
-    )
+    )  # a mis-filed overseas number can never be dialled, but if it ever reached Sunday it
+    # would hear its own country's emergency number, not 911
     seen: list[str] = []
     model = ScriptedChat(script=[ModelError("should not be called", retryable=False)])
     session = CallSession(repo, model, settings, parent, on_alert=lambda a: seen.append(a.id))
@@ -289,9 +290,29 @@ def test_now_alert_is_handed_out_during_the_call_and_number_matches_country(worl
     # Fired once, at the moment the trigger hit, before any further turn.
     session.hear("my hip hurts")
     ev = session.hear("still here")
-    assert len(seen) == 1 and "1122" in ev.say  # Karachi number -> 1122, not 911
+    assert len(seen) == 1 and "1122" in ev.say
     assert session.emergency_number == "1122"
     assert CallSession(repo, model, settings, parent, country="GB").emergency_number == "999"
+
+
+def test_only_us_numbers_can_be_dialled(world):
+    from sunday.geo import OutsideServiceAreaError, is_callable, timezone_for
+
+    repo, parent, settings = world
+    tel = FakeTelephony()
+    settings = Settings(_env_file=None, SUNDAY_PROVIDER="fake", SUNDAY_PUBLIC_URL="https://x.test")
+    assert is_callable(parent.phone)
+    dial(repo, tel, settings, parent)
+    assert len(tel.placed) == 1
+    for phone in ("+92 300 1234567", "+44 7700 900003", "+1 416 555 0100", "+1 555 010 0001"):
+        p = repo.add_parent(name="X", phone=phone)
+        with pytest.raises(OutsideServiceAreaError):
+            dial(repo, tel, settings, p)
+    assert len(tel.placed) == 1  # nothing else was rung
+    assert repo.recent_calls(parent.id, days=1)  # and no Call rows were created for the others
+    assert all(c.parent_id == parent.id for c in repo.recent_calls(parent.id, days=1))
+    assert timezone_for("+1 614 555 0101") == "America/New_York"
+    assert timezone_for("+1 808 555 0100") == "Pacific/Honolulu"
 
 
 def test_on_alert_failure_never_breaks_the_call(world):
