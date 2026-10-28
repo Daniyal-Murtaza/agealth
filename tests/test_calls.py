@@ -275,12 +275,8 @@ def test_dial_and_no_answer_escalation(world):
     assert record_outcome(repo, c3, "no-answer") is None
 
 
-def test_now_alert_is_handed_out_during_the_call_and_number_matches_country(world):
-    repo, _, settings = world
-    parent = repo.add_parent(
-        name="Khalida", preferred_name="Ammi", phone="+923001234567", language="en"
-    )  # a mis-filed overseas number can never be dialled, but if it ever reached Sunday it
-    # would hear its own country's emergency number, not 911
+def test_now_alert_is_handed_out_during_the_call(world):
+    repo, parent, settings = world
     seen: list[str] = []
     model = ScriptedChat(script=[ModelError("should not be called", retryable=False)])
     session = CallSession(repo, model, settings, parent, on_alert=lambda a: seen.append(a.id))
@@ -290,9 +286,23 @@ def test_now_alert_is_handed_out_during_the_call_and_number_matches_country(worl
     # Fired once, at the moment the trigger hit, before any further turn.
     session.hear("my hip hurts")
     ev = session.hear("still here")
-    assert len(seen) == 1 and "1122" in ev.say
-    assert session.emergency_number == "1122"
-    assert CallSession(repo, model, settings, parent, country="GB").emergency_number == "999"
+    assert len(seen) == 1 and "911" in ev.say
+    assert session.emergency_number == "911"
+
+
+def test_a_session_for_an_overseas_parent_refuses_to_start(world):
+    """Defence in depth: even if an overseas number reaches the database, Sunday will not
+    speak to it. The emergency-number table still knows the right number for that country,
+    so a future service area is a one-line change."""
+    from sunday.brain.safety import emergency_number_for
+    from sunday.geo import OutsideServiceAreaError
+
+    repo, _, settings = world
+    parent = repo.add_parent(name="Khalida", preferred_name="Ammi", phone="+923001234567")
+    session = CallSession(repo, ScriptedChat(script=[]), settings, parent)
+    with pytest.raises(OutsideServiceAreaError):
+        session.start()
+    assert emergency_number_for("+923001234567") == "1122"
 
 
 def test_only_us_numbers_can_be_dialled(world):

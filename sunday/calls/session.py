@@ -156,7 +156,11 @@ class CallSession:
     # -- lifecycle -------------------------------------------------------------
 
     def start(self) -> SessionEvent:
-        """Call answered. Returns the opening line."""
+        """Call answered. Returns the opening line. A parent outside the service area is
+        refused here too, so a stale database row can never be spoken to."""
+        from sunday.geo import check_callable
+
+        check_callable(self.parent.phone)
         self.repo.update_call(self.call.id, status="in_progress", started_at=datetime.now(UTC))
         self.phase = Phase.TALKING
         line = (

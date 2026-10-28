@@ -443,12 +443,12 @@ def test_family_actions_and_call_page(env):
     client.post(f"/app/{pid}/memories/{sister.id}/remove")
     assert not any("sister" in m.text for m in svc.repo.memories_for(pid))
 
-    # Settings: valid values stick, junk is ignored.
+    # Settings: valid values stick; junk and non-US timezones are ignored.
     client.post(
         f"/app/{pid}/settings",
         data={
             "call_time": "08:30",
-            "timezone": "Europe/London",
+            "timezone": "America/Chicago",
             "language": "ur",
             "preferred_name": "Ammi",
         },
@@ -456,16 +456,16 @@ def test_family_actions_and_call_page(env):
     p = svc.repo.get_parent(pid)
     assert (p.call_time, p.timezone, p.language, p.preferred_name) == (
         "08:30",
-        "Europe/London",
+        "America/Chicago",
         "ur",
         "Ammi",
     )
     client.post(
         f"/app/{pid}/settings",
-        data={"call_time": "25:99", "timezone": "Mars/Base", "language": "xx"},
+        data={"call_time": "25:99", "timezone": "Europe/London", "language": "xx"},
     )
     p = svc.repo.get_parent(pid)
-    assert (p.call_time, p.timezone, p.language) == ("08:30", "Europe/London", "ur")
+    assert (p.call_time, p.timezone, p.language) == ("08:30", "America/Chicago", "ur")
 
     # A member may change only their own alert level.
     me = next(m for m in svc.repo.family_for(pid) if m.name == "Daniyal")
@@ -941,3 +941,119 @@ def test_onboarding_infers_timezone_and_validates_numbers_properly(env):
     bad = dict(START, your_phone="+1 555", parent_phone="+1 614 555 0199", timezone="")
     r = client.post("/start", data=bad)
     assert "doesn't look right" in r.text and len(svc.repo.list_parents()) == 1
+
+
+# --------------------------------------------------------------- security regression tests
+
+
+def test_security_headers_on_every_response(env):
+    _setup(env)
+    _, _, client = _web(env)
+    for path in ("/", "/login", "/start", "/privacy"):
+        h = client.get(path).headers
+        assert "default-src 'self'" in h["content-security-policy"], path
+        assert "frame-ancestors 'none'" in h["content-security-policy"]
+        assert h["x-frame-options"] == "DENY"
+        assert h["x-content-type-options"] == "nosniff"
+        assert h["referrer-policy"] == "strict-origin-when-cross-origin"
+        assert "max-age=31536000" in h["strict-transport-security"]  # https public url
+    # Family pages are never cached by a shared browser.
+    svc, messenger, client = _web(env)
+    _sign_in(client, messenger, "+1 555 0001")
+    assert client.get("/app").headers["cache-control"] == "private, no-store"
+
+
+def test_cross_site_posts_are_refused(env):
+    pid = _setup(env)
+    svc, messenger, client = _web(env)
+    _sign_in(client, messenger, "+1 555 0001")
+    before = len(svc.repo.memories_for(pid))
+    # A form on another site, submitted by the signed-in browser.
+    r = client.post(
+        f"/app/{pid}/memories",
+        data={"text": "planted by evil.example", "topic": ""},
+        headers={"Origin": "https://evil.example"},
+    )
+    assert r.status_code == 403 and len(svc.repo.memories_for(pid)) == before
+    r = client.post(
+        f"/app/{pid}/memories",
+        data={"text": "planted via referer", "topic": ""},
+        headers={"Referer": "https://evil.example/page"},
+    )
+    assert r.status_code == 403 and len(svc.repo.memories_for(pid)) == before
+    # Our own origin (the public URL) is fine.
+    r = client.post(
+        f"/app/{pid}/memories",
+        data={"text": "mine", "topic": ""},
+        headers={"Origin": "https://x.test"},
+    )
+    assert r.status_code == 303 and len(svc.repo.memories_for(pid)) == before + 1
+    # Twilio webhooks carry no browser origin and are exempt (they are signature-checked).
+    assert client.post(f"/twilio/voice/{pid}", data={"CallSid": "CA1"}).status_code == 200
+    # Logout from a foreign origin is refused too (no logout CSRF).
+    assert client.post("/logout", headers={"Origin": "https://evil.example"}).status_code == 403
+
+
+def test_sign_up_rate_limit_counts_every_attempt_and_honours_the_proxy_header(env):
+    svc, _, client = _web(env)
+    bad = dict(START, confirm="")  # invalid: never creates anything
+    ok_codes = [
+        client.post("/start", data=bad, headers={"X-Forwarded-For": "203.0.113.9"}).text
+        for _ in range(6)
+    ]
+    assert sum("Too many sign-ups" in t for t in ok_codes) >= 1
+    assert svc.repo.list_parents() == []
+    # A different caller behind the same proxy is not affected.
+    r = client.post("/start", data=START, headers={"X-Forwarded-For": "203.0.113.10"})
+    assert "Check your phone" in r.text and len(svc.repo.list_parents()) == 1
+
+
+def test_us_only_holds_even_for_a_stale_database_row(env):
+    """Belt and braces: a parent whose stored number is overseas is never rung, never
+    scheduled, and never spoken to, whichever door the call comes through."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from sunday.scheduler import due_parents
+
+    pid = _setup(env)
+    svc, messenger, client = _web(
+        env,
+        TWILIO_ACCOUNT_SID="ACtest",
+        TWILIO_AUTH_TOKEN="shhh-test-token",
+        TWILIO_FROM_NUMBER="+16145550000",
+    )
+    svc.repo.update_parent(pid, phone="+923001234567", intro_done=True, timezone="Asia/Karachi")
+    _sign_in(client, messenger, "+1 555 0001")
+    # Have Sunday call now: refused, nothing dialled.
+    r = client.post(f"/app/{pid}/call")
+    assert "Outside the service area" in r.text and svc.telephony.placed == []
+    # Scheduler: not due, at any hour.
+    at = datetime(2026, 11, 2, 9, 1, tzinfo=ZoneInfo("Asia/Karachi"))
+    assert due_parents(svc.repo, now=at) == []
+    # Twilio answered-call webhook for that parent: a short refusal, no relay, no session.
+    r = client.post(f"/twilio/voice/{pid}", data={"CallSid": "CA77"})
+    assert r.status_code == 200 and "<Hangup/>" in r.text and "ConversationRelay" not in r.text
+    # Inbound from that number: refused before lookup.
+    r = client.post("/twilio/inbound", data={"CallSid": "CA78", "From": "+923001234567"})
+    assert "<Hangup/>" in r.text
+    # Settings cannot move the parent to a non-US timezone.
+    client.post(
+        f"/app/{pid}/settings",
+        data={"call_time": "09:00", "timezone": "Europe/London", "language": "en"},
+    )
+    assert svc.repo.get_parent(pid).timezone == "Asia/Karachi"  # unchanged, not accepted
+
+
+def test_invite_validates_the_number_and_caps_the_family(env):
+    pid = _setup(env)
+    svc, messenger, client = _web(env)
+    _sign_in(client, messenger, "+1 555 0001")
+    before = len(svc.repo.family_for(pid))
+    client.post(f"/app/{pid}/members", data={"name": "Junk", "phone": "12345678"})
+    assert len(svc.repo.family_for(pid)) == before  # not a possible number anywhere
+    client.post(f"/app/{pid}/members", data={"name": "Aunt Carol", "phone": "(312) 555-0199"})
+    assert len(svc.repo.family_for(pid)) == before + 1
+    for i in range(20):
+        client.post(f"/app/{pid}/members", data={"name": f"M{i}", "phone": f"(312) 555-0{100 + i}"})
+    assert len(svc.repo.family_for(pid)) <= 12

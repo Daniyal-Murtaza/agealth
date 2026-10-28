@@ -45,7 +45,9 @@ def is_due(
 
 
 def due_parents(repo: Repository, *, now: datetime | None = None) -> list[Parent]:
-    return [p for p in repo.list_parents() if is_due(p, repo, now=now)]
+    from sunday.geo import is_callable
+
+    return [p for p in repo.list_parents() if is_callable(p.phone) and is_due(p, repo, now=now)]
 
 
 DIGEST_DAY = 6  # Sunday

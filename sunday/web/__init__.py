@@ -114,6 +114,53 @@ def create_app(services: Services) -> FastAPI:
     cookie_secure = public_url.startswith("https://")
 
     app = FastAPI(title="Sunday", version="0.1.0", docs_url=None, redoc_url=None)
+
+    @app.middleware("http")
+    async def harden(request: Request, call_next):
+        """Two cheap, broad protections.
+
+        CSRF: every state-changing request to the app must come from our own origin. The
+        session cookie is SameSite=Lax, which stops most cross-site POSTs, but Lax is a browser
+        default rather than a guarantee, so we also check Origin (falling back to Referer).
+        Twilio's webhooks are exempt: they carry no browser origin and are verified by
+        signature instead.
+
+        Headers: a strict Content-Security-Policy (inline scripts are allowed only because the
+        wizard and live-call page use small inline snippets; no remote scripts at all), no
+        framing, no MIME sniffing, no referrer leakage, HSTS when served over https.
+        """
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and not request.url.path.startswith(
+            "/twilio/"
+        ):
+            origin = request.headers.get("origin") or ""
+            if not origin:
+                ref = request.headers.get("referer") or ""
+                origin = "/".join(ref.split("/")[:3]) if ref else ""
+            allowed = {public_url, f"{request.url.scheme}://{request.headers.get('host', '')}"}
+            if origin and origin.rstrip("/") not in allowed:
+                log.warning(
+                    "cross-site %s to %s refused from %s", request.method, request.url.path, origin
+                )
+                return PlainTextResponse("cross-site request refused", status_code=403)
+        response = await call_next(request)
+        h = response.headers
+        h.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; "
+            "media-src 'self'; connect-src 'self'; "
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        )
+        h.setdefault("X-Frame-Options", "DENY")
+        h.setdefault("X-Content-Type-Options", "nosniff")
+        h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if cookie_secure:
+            h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        if request.url.path.startswith("/app"):
+            h.setdefault("Cache-Control", "private, no-store")
+        return response
+
     app.mount("/static", StaticFiles(directory=_HERE / "static"), name="static")
     templates = Jinja2Templates(directory=_HERE / "templates")
     templates.env.globals.update(
@@ -133,6 +180,15 @@ def create_app(services: Services) -> FastAPI:
         return templates.TemplateResponse(request, name, ctx)
 
     # -- who is asking ---------------------------------------------------------------
+
+    def client_ip(request: Request) -> str:
+        # Render (and any TLS proxy) puts the caller in X-Forwarded-For; the socket peer is
+        # the proxy. Take the first hop, which the proxy set, not something the client sent
+        # further upstream (Render overwrites the header).
+        fwd = request.headers.get("x-forwarded-for", "")
+        if fwd:
+            return fwd.split(",")[0].strip()
+        return request.client.host if request.client else "?"
 
     def current_viewer(request: Request) -> Viewer:
         v = auth.viewer_from_request(request)
@@ -170,11 +226,13 @@ def create_app(services: Services) -> FastAPI:
         """Create the parent and the first family member, then send that member their
         sign-in link. Daily calls begin only after the introductory call, which the member
         places from their page, so a stranger's number typed here is never rung on its own."""
-        form = {k: str(v).strip() for k, v in (await request.form()).items()}
-        errors = _validate_start(form)
-        addr = request.client.host if request.client else "?"
-        if not errors and not start_limit.allow(addr):
-            errors.append("Too many sign-ups from this connection. Please try again later.")
+        form = {k: str(v).strip()[:2000] for k, v in (await request.form()).items()}
+        addr = client_ip(request)
+        if not start_limit.allow(addr):
+            # Counted on every attempt, valid or not, so a bot cannot probe for free.
+            errors = ["Too many sign-ups from this connection. Please try again in an hour."]
+        else:
+            errors = _validate_start(form)
         if errors:
             return render(request, "start.html", timezones=_TIMEZONES, errors=errors, form=form)
         form["your_phone"] = _us_e164(form["your_phone"])
@@ -260,7 +318,7 @@ def create_app(services: Services) -> FastAPI:
 
     @app.post("/login", response_class=HTMLResponse)
     async def login_submit(request: Request, phone: str = Form("")):
-        addr = request.client.host if request.client else "?"
+        addr = client_ip(request)
         digits = digits_only(phone)
         # Same answer whether or not the number is known, and whether or not we sent.
         if len(digits) >= 7 and auth.limit_addr.allow(addr) and auth.limit_phone.allow(digits):
@@ -588,7 +646,7 @@ def create_app(services: Services) -> FastAPI:
                 fields["call_time"] = f"{int(hh):02d}:{int(mm):02d}"
         except ValueError:
             pass
-        if timezone in available_timezones():
+        if timezone in US_TIMEZONES:
             fields["timezone"] = timezone
         if language in LANGUAGE_NAMES:
             fields["language"] = language
@@ -632,8 +690,10 @@ def create_app(services: Services) -> FastAPI:
         """Add a sibling. They get the notes at their level and can sign in with that number."""
         p = parent_for(viewer, pid)
         name, phone = name.strip()[:60], phone.strip()
-        if name and len(digits_only(phone)) >= 7:
-            already = any(digits_only(m.phone) == digits_only(phone) for m in repo.family_for(p.id))
+        members = repo.family_for(p.id)
+        if name and _valid_phone(phone) and len(members) < 12:
+            phone = _us_e164(phone)
+            already = any(digits_only(m.phone) == digits_only(phone) for m in members)
             if not already:
                 m = repo.add_family_member(
                     p.id,
@@ -932,9 +992,7 @@ def _static_version() -> str:
 
 
 _COMMON_TZ = list(US_TIMEZONES)
-_TIMEZONES = _COMMON_TZ + sorted(
-    t for t in available_timezones() if "/" in t and not t.startswith("Etc") and t not in _COMMON_TZ
-)
+_TIMEZONES = list(US_TIMEZONES)  # US-only service: no other zones are offered
 
 
 _e164 = e164
@@ -988,8 +1046,8 @@ def _validate_start(form: dict) -> list[str]:
         errors.append("Your number and your parent's number are the same.")
     if form.get("language", "en") not in LANGUAGE_NAMES:
         errors.append("Please pick a language.")
-    if form.get("timezone") and form["timezone"] not in available_timezones():
-        errors.append("Please pick a timezone.")
+    if form.get("timezone") and form["timezone"] not in US_TIMEZONES:
+        errors.append("Please pick a US timezone.")
     try:
         hh, mm = form.get("call_time", "09:00").split(":")
         assert 0 <= int(hh) < 24 and 0 <= int(mm) < 60

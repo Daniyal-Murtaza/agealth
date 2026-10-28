@@ -163,12 +163,25 @@ def twilio_router(
     router = APIRouter()
     ws_url = public_url.replace("https://", "wss://").replace("http://", "ws://") + "/twilio/relay"
 
+    from xml.sax.saxutils import escape
+
     @router.post("/twilio/voice/{parent_id}", dependencies=deps)
     async def voice(parent_id: str, CallSid: str = Form("")) -> Response:  # noqa: N803
         # Twilio hits this when the parent answers. Greeting is spoken by Twilio while
         # the WebSocket connects, so the first second of the call is never silent.
+        from sunday.geo import OutsideServiceAreaError
+
         session = make_session(parent_id, CallSid)
-        ev = session.start()
+        try:
+            ev = session.start()
+        except OutsideServiceAreaError as exc:
+            log.error("refusing to speak to %s: %s", parent_id, exc)
+            session.hangup("outside_service_area")
+            twiml = (
+                '<?xml version="1.0" encoding="UTF-8"?><Response>'
+                f"<Say>{escape(NOT_SET_UP)}</Say><Hangup/></Response>"
+            )
+            return Response(content=twiml, media_type="application/xml")
         twiml = conversation_relay_twiml(
             ws_url, language=session.parent.language, parent_id=parent_id, greeting=ev.say
         )
