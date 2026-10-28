@@ -26,6 +26,7 @@ dependencies = [
     "python-multipart==0.0.32",
     "jinja2==3.1.6",
     "itsdangerous==2.2.0",
+    "phonenumbers==9.0.19",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +39,7 @@ sunday = "sunday.cli:main"
 include = ["sunday*"]
 
 [tool.setuptools.package-data]
-sunday = ["web/templates/*.html", "web/static/*"]
+sunday = ["web/templates/*.html", "web/templates/legal/*.html", "web/static/*", "web/static/fonts/*", "web/static/img/*"]
 
 [tool.ruff]
 line-length = 100

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} - Sunday{% endblock %}
+{% block body %}
+<div class="prose" style="margin-top:1.5rem">
+  <div class="eyebrow">{{ eyebrow or 'Trust' }}</div>
+  <h1>{{ page_title }}</h1>
+  {% block prose %}{% endblock %}
+  <p class="tiny faint mt2">Sunday is operated by <b>[Company name], [registered address]</b>. Last updated {{ updated or 'October 2026' }}. Questions: <a href="/contact">contact us</a>.</p>
+</div>
+{% endblock %}

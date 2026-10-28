@@ -1,19 +1,55 @@
 {% extends "base.html" %}
 {% block title %}Calling {{ parent.address() }} - Sunday{% endblock %}
 {% block body %}
-<div class="narrow" style="margin: 3rem auto;">
+{% include "_appnav.html" %}
+<div class="narrow" style="margin: 1.5rem auto;">
   <div class="card">
-    {% if placed and busy %}
-      <h1 class="serif" style="font-size:2rem">Already on a call</h1>
-      <p class="muted">Sunday is ringing or talking to {{ parent.address() }} right now. The note will arrive when it ends.</p>
-    {% elif placed %}
-      <h1 class="serif" style="font-size:2rem">Ringing {{ parent.address() }}</h1>
-      <p class="muted">Their phone is ringing now. If this is the first call, stay with them: Sunday will introduce itself, and you can say who it is and why it will call each morning. You'll get the note on your phone when it ends.</p>
-    {% else %}
+    {% if not placed %}
       <h1 class="serif" style="font-size:2rem">Calling isn't connected yet</h1>
       <p class="muted">This copy of Sunday has no phone line configured (Twilio keys and a public URL). The terminal simulator still works: <code>sunday simulate {{ parent.id }}</code>.</p>
+    {% else %}
+      <h1 class="serif" style="font-size:2rem" id="title">{% if busy %}Already on a call{% else %}Sunday is calling {{ parent.address() }}{% endif %}</h1>
+      <p class="muted" id="hint">{% if busy %}Sunday is ringing or talking to {{ parent.address() }} right now.{% else %}Their phone is ringing. If this is the first call, stay with them: Sunday will introduce itself, and you can say who it is and why it will call each morning.{% endif %}</p>
+      <ol class="steps-live" id="steps" data-status="/app/{{ parent.id }}/calls/{{ call_id }}/status.json">
+        <li data-stage="ringing" class="now"><span class="dot"></span><span>Ringing {{ parent.address() }}'s phone</span></li>
+        <li data-stage="connected"><span class="dot"></span><span>Connected <span id="dur" class="faint"></span></span></li>
+        <li data-stage="writing"><span class="dot"></span><span>Writing the note for the family</span></li>
+        <li data-stage="ready"><span class="dot"></span><span>Note ready</span></li>
+      </ol>
+      <p id="done" class="mb0" hidden><a class="btn" id="readlink" href="#">Read the call</a></p>
+      <p id="noanswer" class="mb0" hidden><span class="chip today">No answer</span> <span class="small muted">Sunday will try once more in fifteen minutes.</span></p>
     {% endif %}
-    <p class="mb0"><a class="btn ghost" href="/app?parent={{ parent.id }}">Back to {{ parent.address() }}'s page</a></p>
+    <p class="mt mb0"><a class="btn ghost" href="/app?parent={{ parent.id }}">Back to {{ parent.address() }}'s page</a></p>
   </div>
 </div>
+<script>
+(function () {
+  var steps = document.getElementById('steps'); if (!steps) return;
+  var order = ['ringing', 'connected', 'writing', 'ready'], url = steps.dataset.status, timer;
+  function fmt(s) { return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+  function paint(d) {
+    var idx = order.indexOf(d.stage);
+    steps.querySelectorAll('li').forEach(function (li, i) {
+      li.className = i < idx ? 'done' : (i === idx ? 'now' : '');
+      if (i < idx) li.querySelector('.dot').textContent = '✓';
+    });
+    if (d.stage === 'connected') document.getElementById('dur').textContent = fmt(d.seconds);
+    if (d.stage === 'ready') {
+      steps.querySelectorAll('li').forEach(function (li) { li.className = 'done'; li.querySelector('.dot').textContent = '✓'; });
+      document.getElementById('title').textContent = 'The note is ready';
+      document.getElementById('hint').textContent = 'It has also gone to the family on their chosen channel.';
+      var a = document.getElementById('readlink'); a.href = d.link; document.getElementById('done').hidden = false;
+      clearInterval(timer);
+    }
+    if (d.stage === 'no_answer') {
+      steps.querySelector('li').className = 'fail';
+      document.getElementById('title').textContent = 'No answer';
+      document.getElementById('noanswer').hidden = false;
+      clearInterval(timer);
+    }
+  }
+  function poll() { fetch(url, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(paint).catch(function () {}); }
+  poll(); timer = setInterval(poll, 3000);
+})();
+</script>
 {% endblock %}

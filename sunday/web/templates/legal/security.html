@@ -1,0 +1,23 @@
+{% extends "legal/_legal_base.html" %}
+{% block prose %}
+<p class="lede muted">The safety rules are in code, not in a prompt, and the product is designed so the parent never has to trust technology at all.</p>
+<h2>Safety that does not depend on the AI</h2>
+<ul>
+<li>Every sentence the parent says is checked against emergency phrases in English, Urdu, Hindi and Punjabi before any model is consulted. "I fell", "chest pain", "can't breathe" and similar switch the call to a fixed, calm script and alert every family member at once.</li>
+<li>Alerts raised by that code can never be downgraded by the model.</li>
+<li>If the model is unavailable, the call ends with a kind, fixed sentence and the transcript is kept.</li>
+</ul>
+<h2>Nothing invented</h2>
+<p>Every observation, alert and memory must quote words that appear in the transcript. Anything the model writes that it cannot point to is discarded before it is stored or sent. The call page shows the exact words each note was built from.</p>
+<h2>Access</h2>
+<ul>
+<li>Family members sign in with a one-time link sent to the phone on their record, valid once and for fifteen minutes. There are no passwords.</li>
+<li>Sessions are signed, HttpOnly, Secure cookies. Every page and action re-checks that the signed-in phone is on the parent's family record.</li>
+<li>Telephony webhooks are cryptographically verified against our provider's signature and rejected otherwise.</li>
+<li>The service listens only on a private interface behind a TLS proxy.</li>
+</ul>
+<h2>Scam-safe by design</h2>
+<p>Sunday never asks for money, card numbers, PINs or codes, and tells the parent so when the subject comes up, which also trains them to hang up on real scammers.</p>
+<h2>Reporting a problem</h2>
+<p>If you believe you have found a security issue, <a href="/contact">contact us</a>. We acknowledge within two working days.</p>
+{% endblock %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_avatar.html" import av %}
 {% block title %}{{ parent.address() }} - Sunday{% endblock %}
 {% block body %}
 {% include "_appnav.html" %}
@@ -13,7 +14,7 @@
       <p class="headline">{{ headline }}</p>
       <p class="tiny faint mb0">Next call {{ next_call }} · {{ parent.timezone }}</p>
     </div>
-    {% if parent.intro_done %}<form method="post" action="/app/{{ parent.id }}/call" class="auto"><button class="btn" type="submit">Call {{ parent.address() }} now</button></form>{% endif %}
+    {% if parent.intro_done %}<form method="post" action="/app/{{ parent.id }}/call" class="auto"><button class="btn" type="submit"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>Have Sunday call now</button></form>{% endif %}
   </div>
 </section>
 
@@ -22,57 +23,96 @@
   <h2>First, the introductory call</h2>
   <p class="muted">Sit with {{ parent.address() }}, or ring them first, then tap the button. Sunday introduces itself as the assistant sent by {{ parent.introduced_by or 'the family' }}; you say who it is and that it will call each morning at {{ parent.call_time }}. Daily calls begin the next day.</p>
   <div class="row">
-    <form method="post" action="/app/{{ parent.id }}/call" class="auto"><button class="btn lg" type="submit">Call {{ parent.address() }} now</button></form>
+    <form method="post" action="/app/{{ parent.id }}/call" class="auto"><button class="btn lg" type="submit">Have Sunday call {{ parent.address() }} now</button></form>
     {% if not twilio_ready %}<span class="small faint">No phone line on this copy; use <code>sunday simulate {{ parent.id }}</code>.</span>{% endif %}
   </div>
 </div>
 {% endif %}
 
-{% for a in open_alerts %}
-<div class="alert {{ a.tier }}">
-  <div>
-    <div class="tag">{{ tier_label(a.tier) }} · {{ local(a.at).strftime('%a %H:%M') }}</div>
-    <div>{{ a.text }}</div>
-    {% if a.evidence %}<q>{{ a.evidence }}</q>{% endif %}
+{% set needs = cats['needs'] %}
+{% if open_alerts %}
+<section class="banner {{ 'now' if needs.tone == 'bad' else 'today' }}" aria-live="polite">
+  <h2><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zm-2 17h4"/></svg>Needs you: {{ needs.line }}</h2>
+  {% for a in open_alerts %}
+  <div class="alert {{ a.tier }}">
+    <div>
+      <div class="tag">{{ tier_label(a.tier) }} · {{ local(a.at).strftime('%a %H:%M') }}</div>
+      <div>{{ a.text }}</div>
+      {% if a.evidence %}<q>{{ a.evidence }}</q>{% endif %}
+    </div>
+    <form method="post" action="/app/{{ parent.id }}/alerts/{{ a.id }}/ack"><input type="hidden" name="next" value="/app?parent={{ parent.id }}"><button class="btn quiet" type="submit">I've seen this</button></form>
   </div>
-  <form method="post" action="/app/{{ parent.id }}/alerts/{{ a.id }}/ack"><input type="hidden" name="next" value="/app?parent={{ parent.id }}"><button class="btn quiet" type="submit">I've seen this</button></form>
-</div>
-{% endfor %}
-
-<div class="tiles">
-  {% for c in tiles %}
-  <a class="tile t-{{ c.key }} {{ c.tone }}" href="/app/{{ parent.id }}/c/{{ c.key }}">
-    <span class="tile-icon">
-      {% if c.key == 'day' %}<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-      {% elif c.key == 'health' %}<svg viewBox="0 0 24 24"><path d="M12 21s-7-4.6-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.4-9 9-9 9z"/></svg>
-      {% elif c.key == 'medication' %}<svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M8.5 15.5l7-7"/></svg>
-      {% elif c.key == 'appointments' %}<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-      {% elif c.key == 'needs' %}<svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zm-2 17h4"/></svg>
-      {% else %}<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>{% endif %}
-    </span>
-    <span class="tile-title">{{ c.title }}{% if c.count and c.key in ('needs','followups','appointments') %} <span class="count {{ 'hot' if c.tone == 'bad' }}">{{ c.count }}</span>{% endif %}</span>
-    <span class="tile-blurb">{{ c.blurb }}</span>
-    <span class="tile-line">{{ c.line }}</span>
-    <span class="tile-go" aria-hidden="true">&rsaquo;</span>
-  </a>
   {% endfor %}
+  <p class="tiny mb0 faint">Everyone on {{ parent.address() }}'s family who asked for this level has been messaged.</p>
+</section>
+{% endif %}
+
+<div class="home-grid">
+  <div>
+    <div class="tiles">
+      {% for c in tiles %}
+      {% if not (open_alerts and c.key == 'needs') %}
+      <a class="tile t-{{ c.key }} {{ c.tone }}" href="/app/{{ parent.id }}/c/{{ c.key }}">
+        <span class="tile-icon" aria-hidden="true">
+          {% if c.key == 'day' %}<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          {% elif c.key == 'health' %}<svg viewBox="0 0 24 24"><path d="M12 21s-7-4.6-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.4-9 9-9 9z"/></svg>
+          {% elif c.key == 'medication' %}<svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M8.5 15.5l7-7"/></svg>
+          {% elif c.key == 'appointments' %}<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+          {% elif c.key == 'needs' %}<svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zm-2 17h4"/></svg>
+          {% else %}<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>{% endif %}
+        </span>
+        <span class="tile-title">{{ c.title }}{% if c.count and c.key in ('needs','followups','appointments') %} <span class="count {{ 'hot' if c.tone == 'bad' }}">{{ c.count }}</span>{% endif %}</span>
+        <span class="tile-blurb">{{ c.blurb }}</span>
+        <span class="tile-line">{{ c.line }}</span>
+        <span class="tile-go" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <h2>The last two weeks <a href="/app/{{ parent.id }}/calls">all calls &rarr;</a></h2>
+      <div class="strip" role="list">
+        {% for d in strip %}
+          {% set tip = d.date.strftime('%A %d %b') ~ ': ' ~ (mood_label(d.mood) if d.state == 'answered' else ('no answer' if d.state == 'missed' else 'no call')) ~ (('. ' ~ d.call.summary.split('.')[0] ~ '.') if d.call and d.call.summary else '') %}
+          {% if d.call %}<a role="listitem" href="/app/{{ parent.id }}/calls/{{ d.call.id }}" class="{{ d.state }} {{ d.mood }} {{ 'today' if d.date == today }}" data-tip="{{ tip }}" aria-label="{{ tip }}">{{ {'bright':'B','ok':'O','low':'L'}.get(d.mood, '') }}</a>
+          {% else %}<span role="listitem" class="{{ d.state }} {{ 'today' if d.date == today }}" data-tip="{{ tip }}" aria-label="{{ tip }}" tabindex="0">{{ '!' if d.state == 'missed' else '' }}</span>{% endif %}
+        {% endfor %}
+      </div>
+      <div class="strip-labels" aria-hidden="true">{% for d in strip %}<span>{{ d.date.strftime('%a')[0] }}</span>{% endfor %}</div>
+      <div class="legend">
+        <span><i style="background:var(--bright)">B</i>bright</span>
+        <span><i style="background:var(--ok)">O</i>okay</span>
+        <span><i style="background:var(--low)">L</i>a bit low</span>
+        <span><i style="background:#f6dcd7;color:var(--now)">!</i>no answer</span>
+        <span><i style="background:var(--paper-2)"></i>no call</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>{{ answered_days }}<small>/14</small></b><span>days answered</span></div>
+        <div class="stat"><b>{{ med_taken }}</b><span>days medication taken</span></div>
+        <div class="stat"><b>{{ compare.pain[0] }}</b><span>mentions of pain this week</span></div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="card panel">
+    <h3>Next call <span class="tiny faint">{{ next_call }}</span></h3>
+    <p class="small muted">Sunday will ask how {{ parent.address() }} is, about sleep, {% if parent.medications %}the {{ parent.medications[0].name }}, {% endif %}meals, then:</p>
+    <ul class="list small">
+      {% for t in follow_ups %}<li><div><span class="pill">follow up</span>{{ t }}</div></li>{% endfor %}
+      {% for m in queued if not m.remind_on or m.remind_on <= today %}
+      <li><div><span class="pill {{ m.kind }}">{{ {'say':'tell','ask':'ask','remind':'remind'}[m.kind] }}</span>{{ m.text }}<div class="byline" style="margin-top:.25rem">{{ av(m.from_name, 'sm') }} {{ m.from_name }}</div></div></li>
+      {% endfor %}
+      {% if not follow_ups and not queued %}<li class="empty">Nothing extra. The usual conversation.</li>{% endif %}
+    </ul>
+    <p class="mt mb0"><a class="btn quiet" href="/app/{{ parent.id }}/ask">Add something</a></p>
+    <h3 class="mt2">Family</h3>
+    <ul class="list small">
+      {% for m in members %}<li><div class="byline">{{ av(m.name) }} <b style="color:var(--ink)">{{ m.name }}</b> <span class="faint">{{ {'info':'everything','today':'check-today + urgent','now':'urgent only'}[m.min_alert_tier] }}</span></div></li>{% endfor %}
+    </ul>
+    <p class="tiny mb0"><a href="/app/{{ parent.id }}/family">Invite a sibling</a></p>
+  </aside>
 </div>
 
-<div class="card" style="margin-top:1.25rem">
-  <h2>The last two weeks <a href="/app/{{ parent.id }}/c/day">all calls &rarr;</a></h2>
-  <div class="strip">
-    {% for d in strip %}
-      {% if d.call %}<a href="/app/{{ parent.id }}/calls/{{ d.call.id }}" class="{{ d.state }} {{ d.mood }} {{ 'today' if d.date == today }}" title="{{ d.date.strftime('%a %d %b') }}: {{ mood_label(d.mood) or 'answered' }}"></a>
-      {% else %}<span class="{{ d.state }} {{ 'today' if d.date == today }}" title="{{ d.date.strftime('%a %d %b') }}: {{ 'no answer' if d.state == 'missed' else 'no call' }}"></span>{% endif %}
-    {% endfor %}
-  </div>
-  <div class="strip-labels">{% for d in strip %}<span>{{ d.date.strftime('%a')[0] }}</span>{% endfor %}</div>
-  <div class="stats">
-    <div class="stat"><b>{{ answered_days }}<small>/14</small></b><span>days answered</span></div>
-    <div class="stat"><b>{{ med_taken }}</b><span>days medication taken</span></div>
-    <div class="stat"><b>{{ compare.pain[0] }}</b><span>mentions of pain this week</span></div>
-  </div>
-</div>
-
-<p class="tiny faint mt">Signed in as {{ me.name }} ({{ me.relation or 'family' }}). Every line above comes from what {{ parent.address() }} actually said. <a href="/app/more?parent={{ parent.id }}">Settings &amp; more</a></p>
+<p class="tiny faint mt">Signed in as {{ me.name }} ({{ me.relation or 'family' }}). Every line above comes from what {{ parent.address() }} actually said.</p>
 {% endblock %}

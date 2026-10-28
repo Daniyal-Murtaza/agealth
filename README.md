@@ -325,9 +325,9 @@ Step 6. The home page. Under "Good morning, Daniyal" is one sentence: how Amma s
 - **Needs you**: "Nothing right now" or "1 urgent, 1 to check today". Opens open alerts with "I've seen this", and the ones already seen.
 - **Follow-ups**: what Sunday will ask about tomorrow and what the family has queued.
 
-Below the tiles: the fortnight strip (one square per day, click any to read that call) and three numbers. The bar at the top (bottom on a phone) is Home, Her day, Ask Sunday, Needs you, Settings. **Call Amma now** is in the header; on this copy it explains there is no phone line yet, in Part 8 it rings.
+Below the tiles: the fortnight strip (one lettered square per day; hover or tap for the date, mood and first line of the note; click to read the call) and three numbers. On the right, the Next call panel: what Sunday will ask and who queued each item. The bar at the top (bottom on a phone) is the same on every page: Home, Calls, Ask Sunday, Family, Settings. When something is urgent, a red banner takes over the top of the page. **Have Sunday call now** is in the header; on this copy it explains there is no phone line yet, in Part 8 it rings.
 
-Step 6b. Walk **Settings** (the last tab), top to bottom. This is the long page with every control.
+Step 6b. **Calls** is the timeline: one card per day, open it to see the quoted words the note was built from, and "Read the full call" for the transcript with the evidence highlighted. **Family** is who hears what, with invite. **Settings** holds the schedule, language, medications, recording, what Sunday knows, the weekly report and export. Walk Settings top to bottom:
 
 - **Header.** "Amma", last call and mood, next call time, "Signed in as Daniyal (son). You get: everything."
 
@@ -362,7 +362,7 @@ This is how a new family would arrive from the website without anyone touching t
 
 Step 1. With `sunday serve` running, open http://127.0.0.1:8000 and click **Start with your parent**.
 
-Step 2. Fill the form with made-up people. Use numbers that are not already in use, with country codes, for example yourself `+1 555 020 0001` and parent `+92 300 7654321`. Add a medication and a line or two of "things Sunday should know". Tick the confirmation box. Click **Set up Sunday**.
+Step 2. The form is three short steps with a progress bar: you, your parent, the first call. Phone fields have a country picker and format as you type; the parent's timezone is worked out from their number (change it if they live elsewhere). The last step previews exactly how Sunday will greet them in the chosen language. Fill it with made-up people. Use numbers that are not already in use, with country codes, for example yourself `+1 555 020 0001` and parent `+92 300 7654321`. Add a medication and a line or two of "things Sunday should know". Tick the confirmation box. Click **Set up Sunday**.
 
 Step 3. The page says "Check your phone, <your name>". In the server terminal, copy the `/auth/...` link and open it. You are on the new parent's page.
 
@@ -449,7 +449,7 @@ Step 5. Place a call from a third terminal:
 sunday call par_XXXX
 ```
 
-Your phone rings. Answer; you hear "Hello Amma, it's Sunday calling..." Talk to it. Hang up or say you are tired. Within a few seconds the family note arrives on WhatsApp or SMS (or prints in the `serve` terminal for console members), ending with "Read the call: https://.../app/.../calls/..." Open that link, sign in with the family number, and read the transcript. The same call is available from the website's **Call Amma now** button.
+Your phone rings. Answer; you hear "Hello Amma, it's Sunday calling..." Talk to it. Hang up or say you are tired. Within a few seconds the family note arrives on WhatsApp or SMS (or prints in the `serve` terminal for console members), ending with "Read the call: https://.../app/.../calls/..." Open that link, sign in with the family number, and read the transcript. The same call is available from the website's **Have Sunday call now** button.
 
 Step 6. The parent calls Sunday. In the Twilio console, open your number, and under Voice set "A call comes in" to Webhook, `https://....ngrok-free.app/twilio/inbound`, HTTP POST. Save. Now ring your Twilio number from the parent's phone: "Hello Amma, it's Sunday. How lovely that you called. How are you?" No survey, just a conversation; the note says "Amma called Sunday". Ring from a number that is not a parent: a kind message that the number is not set up, and the call ends.
 
@@ -492,7 +492,7 @@ Every push to `main` redeploys automatically.
 Everything above is also covered by tests that need no keys and no network:
 
 ```bash
-pytest                                   # 92 offline tests, ~3s
+pytest                                   # 94 offline tests, ~4s
 ruff check . && ruff format --check .    # lint / format
 ```
 
@@ -547,8 +547,8 @@ sunday/
     auth.py         one-time links over WhatsApp/SMS, signed session cookie, rate limits
     twilio_auth.py  X-Twilio-Signature verification, fail-closed
     categories.py   sorts calls into Amma's day / Health / Medication / Appointments / Needs you / Follow-ups
-    templates/      base, landing, start, login, home (dashboard), category, ask, family (settings), call
-    static/         one stylesheet, no framework, no web fonts
+    templates/      base, landing, start (wizard), login, home, category, calls, ask, members, settings, call, call_now, legal/*
+    static/         sunday.css (tokens in docs/design-tokens.md), self-hosted Fraunces + Inter, icons, og image, manifest, service worker
   scheduler.py      who is due a call now (one retry, never more); whose weekly report is due
   config.py         settings (.env)
   models.py         Parent, FamilyMember, Call, Turn, Observation, Alert, QueuedMessage, Memory

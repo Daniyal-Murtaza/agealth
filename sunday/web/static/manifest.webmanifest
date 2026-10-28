@@ -1,0 +1,14 @@
+{
+  "name": "Sunday",
+  "short_name": "Sunday",
+  "description": "A daily call for your parent. The family hears how it went.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f2ea",
+  "theme_color": "#f7f2ea",
+  "icons": [
+    { "src": "/static/img/icon-512.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/static/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Calls - {{ parent.address() }} - Sunday{% endblock %}
+{% block body %}
+{% include "_appnav.html" %}
+<section class="greet compact">
+  <h1>Calls</h1>
+  <p class="headline">{{ answered_days }} of the last 14 mornings answered. Open a day to see the words each note was built from.</p>
+</section>
+
+<div class="card tight">
+  {% for d in days %}
+  {% if d.call.status == 'no_answer' %}
+  <div class="day"><div style="display:flex;gap:.75rem"><span class="d">{{ d.label }}<small>{{ d.date.strftime('%d %b') }}</small></span><span class="s faint">No answer. {% if loop.index == 1 %}Sunday tried once more fifteen minutes later.{% endif %}</span></div></div>
+  {% else %}
+  <details class="day" {{ 'open' if loop.index == 1 }}>
+    <summary>
+      <span class="d">{{ d.label }}<small>{{ d.date.strftime('%d %b, %H:%M') }}</small></span>
+      <span class="s"><span class="mood {{ d.call.mood or 'unclear' }}" aria-label="{{ mood_label(d.call.mood) }}">{{ {'bright':'B','ok':'O','low':'L'}.get(d.call.mood, '') }}</span> {{ d.call.summary }}{% if d.call.direction == 'inbound' %} <span class="pill">called in</span>{% endif %}</span>
+      <span class="caret" aria-hidden="true">›</span>
+    </summary>
+    {% if d.alerts %}<div class="ev">{% for a in d.alerts %}<div><span class="pill {{ 'bad' if a.tier == 'now' else 'warn' }}">{{ tier_label(a.tier) }}</span>{{ a.text }}</div>{% endfor %}</div>{% endif %}
+    {% if d.evidence %}
+    <div class="ev">
+      {% for o in d.evidence %}<div><span class="pill">{{ o.kind }}</span>{{ o.text }}{% if o.value %} <span class="faint">({{ o.value }})</span>{% endif %}<span class="quote">"{{ o.evidence }}"</span></div>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="actions"><a class="btn quiet" href="/app/{{ parent.id }}/calls/{{ d.call.id }}">Read the full call</a></div>
+  </details>
+  {% endif %}
+  {% else %}
+  <p class="empty mb0">No calls yet. The first is {{ next_call }}.</p>
+  {% endfor %}
+</div>
+{% endblock %}

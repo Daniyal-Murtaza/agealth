@@ -1,0 +1,13 @@
+{% extends "legal/_legal_base.html" %}
+{% set eyebrow = 'Pricing' %}
+{% block prose %}
+<p class="lede muted">Free while we are in beta. Here is what comes after, so you are never surprised.</p>
+</div>
+<div class="pricing" style="margin-top:1rem">
+  <div class="card"><h3>Beta</h3><div class="price">Free</div><ul><li>One parent, the whole family</li><li>Daily call in any supported language</li><li>Notes on WhatsApp or SMS</li><li>Alerts, reminders, the weekly report</li><li>Export anytime</li></ul><a class="btn" href="/start">Start with your parent</a></div>
+  <div class="card"><h3>Family</h3><div class="price">$29<span class="small faint">/month</span></div><ul><li>Everything in Beta</li><li>Recordings with consent</li><li>The parent can call in, any time</li><li>Up to two parents</li><li>Priority support</li></ul><span class="small faint">After beta. 30 days' notice before anything is charged.</span></div>
+  <div class="card"><h3>Care partners</h3><div class="price">Talk to us</div><ul><li>Home-care agencies and senior living</li><li>Daily check-ins for every client</li><li>Escalation to your nurses</li><li>Your name and voice</li><li>API and reporting</li></ul><a class="btn ghost" href="/contact">Contact us</a></div>
+</div>
+<div class="prose">
+<p class="tiny faint mt2">Prices in USD, indicative, and will be confirmed before beta ends. Telephony costs are included.</p>
+{% endblock %}

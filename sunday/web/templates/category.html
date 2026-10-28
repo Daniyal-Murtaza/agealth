@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ cat.title }} - {{ parent.address() }} - Sunday{% endblock %}
 {% block body %}
+{% from "_avatar.html" import av %}
+{% set crumbs = [(cat.title, '')] %}
 {% include "_appnav.html" %}
-<p class="small"><a href="/app?parent={{ parent.id }}">&larr; Home</a></p>
 <section class="greet compact">
   <h1>{{ cat.title }}</h1>
   <p class="headline {{ cat.tone }}">{{ cat.line }}</p>
@@ -11,12 +12,18 @@
 
 {% if cat.key == 'day' %}
 <div class="card tight" style="margin-bottom:1rem">
-  <ul class="list">
-    {% for c in calls %}
-    <li><div><span class="mood {{ c.mood or 'unclear' }}" style="margin-right:.45rem"></span><a class="row-link" href="/app/{{ parent.id }}/calls/{{ c.id }}">{{ local(c.started_at).strftime('%A %d %b') }}</a>{% if c.direction == 'inbound' %} <span class="pill">called in</span>{% endif %}
-      <div class="small muted">{{ c.summary }}</div></div></li>
-    {% else %}<li class="empty">No calls yet.</li>{% endfor %}
-  </ul>
+  {% for c in calls %}
+  <details class="day" {{ 'open' if loop.index == 1 }}>
+    <summary>
+      <span class="d">{{ local(c.started_at).strftime('%a') }}<small>{{ local(c.started_at).strftime('%d %b') }}</small></span>
+      <span class="s"><span class="mood {{ c.mood or 'unclear' }}" aria-label="{{ mood_label(c.mood) }}">{{ {'bright':'B','ok':'O','low':'L'}.get(c.mood, '') }}</span> {{ c.summary }}{% if c.direction == 'inbound' %} <span class="pill">called in</span>{% endif %}</span>
+      <span class="caret" aria-hidden="true">›</span>
+    </summary>
+    {% set evs = groups|map(attribute=1)|sum(start=[])|selectattr('call_id', 'equalto', c.id)|list %}
+    {% if evs %}<div class="ev">{% for i in evs %}<div><span class="pill">{{ i.tag }}</span>{{ i.text }}{% if i.quote %}<span class="quote">"{{ i.quote }}"</span>{% endif %}</div>{% endfor %}</div>{% endif %}
+    <div class="actions"><a class="btn quiet" href="/app/{{ parent.id }}/calls/{{ c.id }}">Read the full call</a></div>
+  </details>
+  {% else %}<p class="empty mb0">No calls yet.</p>{% endfor %}
 </div>
 {% endif %}
 
@@ -31,7 +38,7 @@
 </form>
 {% endif %}
 
-{% if groups %}
+{% if groups and cat.key != 'day' %}
   {% for label, items in groups %}
   <h3 class="daylabel">{{ label }}</h3>
   <div class="card tight" style="margin-bottom:1rem">
@@ -39,9 +46,10 @@
       {% for i in items %}
       <li>
         <div>
-          {% if i.tag %}<span class="pill {{ i.tone }}">{{ i.tag }}</span>{% endif %}{{ i.text }}
-          {% if i.quote %}<div class="tiny faint quote">"{{ i.quote }}"</div>{% endif %}
-          {% if i.call_id %}<a class="tiny" href="/app/{{ parent.id }}/calls/{{ i.call_id }}">read the call</a>{% endif %}
+          {% if i.tag and not i.tag.startswith('from ') %}<span class="pill {{ i.tone }}">{{ i.tag }}</span>{% endif %}{{ i.text }}
+          {% if i.tag.startswith('from ') %}<div class="byline" style="margin-top:.3rem">{{ av(i.tag[5:], 'sm') }} {{ i.tag[5:] }}</div>{% endif %}
+          {% if i.quote %}<div class="quote">"{{ i.quote }}"</div>{% endif %}
+          {% if i.call_id %}<div style="margin-top:.4rem"><a class="btn quiet" href="/app/{{ parent.id }}/calls/{{ i.call_id }}">Read the call</a></div>{% endif %}
         </div>
         {% if i.action.startswith('ack:') %}
           <form method="post" action="/app/{{ parent.id }}/alerts/{{ i.action[4:] }}/ack"><input type="hidden" name="next" value="{{ here }}"><button class="btn quiet" type="submit">I've seen this</button></form>

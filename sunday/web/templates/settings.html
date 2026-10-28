@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Settings - {{ parent.address() }} - Sunday{% endblock %}
+{% block body %}
+{% include "_appnav.html" %}
+<section class="greet compact">
+  <h1>Settings</h1>
+  <p class="headline">{{ parent.name }} · {{ parent.phone }}</p>
+</section>
+
+<div class="stack">
+  <div class="card section" id="schedule">
+    <h2>The call</h2>
+    <form method="post" action="/app/{{ parent.id }}/settings">
+      <div class="row">
+        <div class="field"><label for="ct">Call time</label><input id="ct" name="call_time" type="time" value="{{ parent.call_time }}"></div>
+        <div class="field"><label for="lang">Language</label>
+          <select id="lang" name="language">{% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if code == parent.language }}>{{ name }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="tz">Timezone</label>
+          <select id="tz" name="timezone">{% for tz in timezones %}<option value="{{ tz }}" {{ 'selected' if tz == parent.timezone }}>{{ tz }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="pn">Sunday calls them</label><input id="pn" name="preferred_name" type="text" value="{{ parent.preferred_name }}" maxlength="40"></div>
+        <div class="field auto"><button class="btn sm" type="submit">Save</button></div>
+      </div>
+    </form>
+  </div>
+
+  <div class="two">
+    <div class="card section" id="medications">
+      <h2>Medications Sunday asks about</h2>
+      <ul class="list small">
+        {% for m in parent.medications or [] %}
+        <li><div>{{ m.name }} <span class="faint">{{ m.when }}</span></div>
+          <form method="post" action="/app/{{ parent.id }}/medications"><input type="hidden" name="remove" value="{{ m.name }}"><button class="btn quiet icon" type="submit" title="Remove" aria-label="Remove {{ m.name }}">&times;</button></form></li>
+        {% else %}<li class="empty">None yet.</li>{% endfor %}
+      </ul>
+      <form method="post" action="/app/{{ parent.id }}/medications" class="row" style="gap:.5rem">
+        <div class="field"><label for="med">Add one</label><input id="med" name="add" type="text" placeholder="blood pressure tablet" maxlength="60" required></div>
+        <div class="field" style="flex:0 0 7.5rem"><label for="when">When</label><select id="when" name="when"><option>morning</option><option>midday</option><option>evening</option><option>night</option></select></div>
+        <div class="field auto"><button class="btn quiet" type="submit">Add</button></div>
+      </form>
+    </div>
+    <div class="card section" id="recording">
+      <h2>Recording</h2>
+      <form method="post" action="/app/{{ parent.id }}/consent">
+        <label class="switch">
+          <input type="checkbox" name="recording" value="yes" {{ 'checked' if parent.consent_recording }} onchange="this.form.submit()">
+          <span class="track"></span>
+          <span class="small">{{ 'On' if parent.consent_recording else 'Off' }}</span>
+        </label>
+        <p class="small muted mt">{{ parent.address() }} has agreed that calls may be recorded for the family to listen to. Sunday says "this call is recorded for the family, as you agreed" at the start of every recorded call. <a href="/consent">Our consent policy</a>.</p>
+        <noscript><button class="btn quiet" type="submit">Save</button></noscript>
+      </form>
+    </div>
+  </div>
+
+  <div class="card section" id="knows">
+    <h2>What Sunday knows <span class="faint">{{ memories|length }} things</span></h2>
+    <form method="post" action="/app/{{ parent.id }}/memories" class="row">
+      <div class="field" style="flex:3 1 220px"><label for="mem">Tell Sunday something</label><input id="mem" name="text" type="text" maxlength="300" placeholder="Her sister Rukhsana calls on Fridays" required></div>
+      <div class="field"><label for="topic">Topic</label><input id="topic" name="topic" type="text" maxlength="30" placeholder="family, health, home"></div>
+      <div class="field auto"><button class="btn sm" type="submit">Remember</button></div>
+    </form>
+    <ul class="list small">
+      {% for m in memories %}
+      <li><div>{{ m.text }}<div class="tiny faint">{{ m.topic or 'note' }}{% if m.source and m.source != 'family' %} · heard on a call{% endif %}</div></div>
+        <form method="post" action="/app/{{ parent.id }}/memories/{{ m.id }}/remove"><button class="btn quiet icon" type="submit" title="Forget this" aria-label="Forget this">&times;</button></form></li>
+      {% else %}<li class="empty">Nothing yet. Grandchildren's names, the knee, the neighbour.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="two">
+    <div class="card section" id="week">
+      <h2>This week's report <span class="faint">sent every Sunday evening</span></h2>
+      <pre class="note small">{{ digest }}</pre>
+    </div>
+    <div class="card section" id="data">
+      <h2>Your data</h2>
+      <p class="small muted">Every call, note, alert and memory about {{ parent.address() }}, as one JSON file. It is yours.</p>
+      <p class="mb0"><a class="btn quiet" href="/app/{{ parent.id }}/export.json">Export everything</a></p>
+      <p class="tiny faint mt mb0">To delete the account, <a href="/contact">contact us</a>; we remove everything within 7 days and confirm by message. <a href="/privacy">Privacy</a>.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

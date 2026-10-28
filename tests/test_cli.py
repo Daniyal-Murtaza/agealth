@@ -392,9 +392,11 @@ def test_magic_link_login_is_scoped_single_use_and_quiet_about_unknown_numbers(e
     page = client.get("/app")
     assert page.status_code == 200
     assert "Amma" in page.text and "Signed in as Daniyal" in page.text
-    more = client.get("/app/more")
-    assert "For the next call" in more.text and "call Thursday after work" in more.text
-    assert "Export everything" in more.text
+    pid0 = svc.repo.list_parents()[0].id
+    ask = client.get(f"/app/{pid0}/ask")
+    assert "For the next call" in ask.text and "call Thursday after work" in ask.text
+    assert "Export everything" in client.get(f"/app/{pid0}/settings").text
+    assert client.get("/app/more").status_code == 303  # old address still lands somewhere
 
     # Another family's parent is not visible, even by id.
     other = svc.repo.add_parent(name="Someone Else", phone="+1 555 777 0000")
@@ -512,7 +514,8 @@ def test_demo_seeds_a_fortnight_and_the_page_renders_it(env):
     assert "Amma" in page and "days answered" in page and "Dr Khan" in page
     assert "called in" not in page
     assert page.count('class="answered') == 13 and 'class="missed' in page
-    assert "Alerts already seen" in client.get("/app/more").text
+    pid = next(p for p in svc.repo.list_parents() if p.preferred_name == "Amma").id
+    assert "seen by" in client.get(f"/app/{pid}/c/needs").text
 
 
 def test_twilio_webhooks_require_a_valid_signature(env):
@@ -616,7 +619,7 @@ def test_self_serve_onboarding_creates_the_household_and_gates_daily_calls(env):
     # Sign in and see the introductory-call card.
     _sign_in(client, messenger, "+1 555 010 0001")
     page = client.get("/app").text
-    assert "First, the introductory call" in page and "Call Amma now" in page
+    assert "First, the introductory call" in page and "Have Sunday call Amma now" in page
     r = client.post(f"/app/{p.id}/call")
     assert r.status_code == 200 and "Calling isn" in r.text  # no phone line on this copy
 
@@ -741,7 +744,7 @@ def test_invite_sibling_and_edit_medications(env):
     client.post(f"/app/{pid}/medications", data={"add": "eye drops", "when": "night"})
     client.post(f"/app/{pid}/medications", data={"remove": "blood pressure tablet"})
     assert svc.repo.get_parent(pid).medications == [{"name": "eye drops", "when": "night"}]
-    assert "eye drops" in client.get("/app/more").text
+    assert "eye drops" in client.get(f"/app/{pid}/settings").text
     assert "eye drops" in client.get("/app").text  # the Medication tile names them
 
 
@@ -796,7 +799,7 @@ def test_dashboard_answers_the_two_questions_and_sorts_into_categories(env):
         r = client.get(f"/app/{pid}/c/{key}")
         assert r.status_code == 200, key
     health = client.get(f"/app/{pid}/c/health").text
-    assert "my knee hurts so much" in health and "read the call" in health
+    assert "my knee hurts so much" in health and "Read the call" in health
     meds = client.get(f"/app/{pid}/c/medication").text
     assert "taken" in meds and "missed" in meds and "Today" in meds
     appts = client.get(f"/app/{pid}/c/appointments").text
@@ -821,7 +824,7 @@ def test_dashboard_answers_the_two_questions_and_sorts_into_categories(env):
     r = client.post(
         f"/app/{pid}/messages", data={"text": "x", "kind": "say", "next": "https://evil.example/"}
     )
-    assert r.headers["location"].startswith("/app/more?parent=")
+    assert r.headers["location"] == f"/app/{pid}/ask?done=queued"
 
     # An open alert shows on home with its button, and in Needs you; acknowledging returns home.
     run(env, ["simulate", pid], input="I fell\n/hangup\n")
@@ -850,3 +853,87 @@ def test_dashboard_for_a_brand_new_parent(env):
     assert "No calls yet." in home and "Nothing noted yet." in home and "Nothing coming up." in home
     for key in ("day", "health", "medication", "appointments", "needs", "followups"):
         assert client.get(f"/app/{pid}/c/{key}").status_code == 200
+
+
+def test_one_shell_everywhere_trust_pages_and_live_call_status(env):
+    run(env, ["demo"])
+    svc, messenger, client = _web(env)
+    _sign_in(client, messenger, "+1 555 010 0001")
+    pid = next(p for p in svc.repo.list_parents() if p.preferred_name == "Amma").id
+
+    # Every app page carries the same five tabs and (below home) a breadcrumb.
+    call = svc.repo.recent_calls(pid, days=30)[0]
+    for path in (
+        "/app",
+        f"/app/{pid}/calls",
+        f"/app/{pid}/family",
+        f"/app/{pid}/settings",
+        f"/app/{pid}/ask",
+        f"/app/{pid}/c/health",
+        f"/app/{pid}/calls/{call.id}",
+    ):
+        page = client.get(path).text
+        for tab in ("Home", "Calls", "Ask Sunday", "Family", "Settings"):
+            assert f">{tab}<" in page or f"<span>{tab}</span>" in page, (path, tab)
+    assert 'class="crumbs"' in client.get(f"/app/{pid}/calls/{call.id}").text
+    assert 'class="crumbs"' not in client.get("/app").text
+
+    # The calls timeline shows each day with its evidence; the home page has the next-call panel.
+    calls = client.get(f"/app/{pid}/calls").text
+    assert "Read the full call" in calls and "took my tablet with chai" in calls
+    home = client.get("/app").text
+    assert "Next call" in home and "Dr Khan" in home and 'class="av' in home
+    assert "Have Sunday call now" in home
+
+    # Urgency takes over the top of the page.
+    run(env, ["simulate", pid], input="I fell\n/hangup\n")
+    home = client.get("/app").text
+    assert 'class="banner now"' in home and "Needs you: 1 urgent" in home
+
+    # Public trust pages and pricing exist and link from the footer.
+    for path, needle in (
+        ("/privacy", "never sell"),
+        ("/terms", "not a medical device"),
+        ("/security", "Nothing invented"),
+        ("/consent", "off by default"),
+        ("/contact", "You will get a person"),
+        ("/pricing", "Free"),
+    ):
+        r = client.get(path)
+        assert r.status_code == 200 and needle.lower() in r.text.lower(), path
+    landing = client.get("/").text
+    assert "/privacy" in landing and "/pricing" in landing and "og:image" in landing
+    assert "fonts/fraunces" in landing and "manifest.webmanifest" in landing
+    assert "☏" not in landing  # no unicode glyph icons
+
+    # Live call status, family only.
+    c = svc.repo.create_call(pid, status="scheduled")
+    assert client.get(f"/app/{pid}/calls/{c.id}/status.json").json()["stage"] == "ringing"
+    svc.repo.update_call(
+        c.id,
+        status="in_progress",
+        started_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
+    )
+    assert client.get(f"/app/{pid}/calls/{c.id}/status.json").json()["stage"] == "connected"
+    svc.repo.update_call(c.id, status="completed")
+    assert client.get(f"/app/{pid}/calls/{c.id}/status.json").json()["stage"] == "writing"
+    svc.repo.update_call(
+        c.id, notified_at=__import__("datetime").datetime.now(__import__("datetime").UTC)
+    )
+    j = client.get(f"/app/{pid}/calls/{c.id}/status.json").json()
+    assert j["stage"] == "ready" and j["link"] == f"/app/{pid}/calls/{c.id}"
+    anon = TestClient(create_app(svc), base_url="https://testserver", follow_redirects=False)
+    assert anon.get(f"/app/{pid}/calls/{c.id}/status.json").status_code == 303
+
+
+def test_onboarding_infers_timezone_and_validates_numbers_properly(env):
+    svc, messenger, client = _web(env)
+    form = dict(START, timezone="")  # "work it out from their number"
+    r = client.post("/start", data=form)
+    assert r.status_code == 200 and "Check your phone" in r.text
+    (p,) = svc.repo.list_parents()
+    assert p.timezone == "Asia/Karachi" and p.phone == "+923001234567"
+    # A number that is impossible for its country is rejected with a plain message.
+    bad = dict(START, your_phone="+1 555", parent_phone="+92 300 7654321", timezone="")
+    r = client.post("/start", data=bad)
+    assert "doesn't look right" in r.text and len(svc.repo.list_parents()) == 1

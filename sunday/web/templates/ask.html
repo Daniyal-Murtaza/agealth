@@ -1,8 +1,8 @@
 {% extends "base.html" %}
+{% from "_avatar.html" import av %}
 {% block title %}Ask Sunday - {{ parent.address() }} - Sunday{% endblock %}
 {% block body %}
 {% include "_appnav.html" %}
-<p class="small"><a href="/app?parent={{ parent.id }}">&larr; Home</a></p>
 <section class="greet compact">
   <h1>For the next call</h1>
   <p class="headline">Tell {{ parent.address() }} something, ask her a question, or set a reminder. Sunday says it naturally and tells you what she said back.</p>
@@ -14,20 +14,20 @@
     <label for="msg">What should Sunday say or ask?</label>
     <input id="msg" name="text" type="text" maxlength="400" placeholder="Ask if she wants us to come on Sunday" required autofocus>
   </div>
+  <div class="field">
+    <label>Kind</label>
+    <div class="seg" role="radiogroup" aria-label="Kind of message">
+      <label><input type="radio" name="kind" value="say" checked><span class="opt"><b>Tell {{ parent.address() }}</b><span>"Hira will call Thursday after work."</span></span></label>
+      <label><input type="radio" name="kind" value="ask"><span class="opt"><b>Ask, and get an answer</b><span>"Does she want a lift to the clinic?" Sunday keeps the call open until she answers.</span></span></label>
+      <label><input type="radio" name="kind" value="remind"><span class="opt"><b>Remind</b><span>"Dr Khan at 10 tomorrow." Pick a date and Sunday says it that day.</span></span></label>
+    </div>
+  </div>
   <div class="row">
     <div class="field">
-      <label for="kind">Kind</label>
-      <select id="kind" name="kind">
-        <option value="say">Tell {{ parent.address() }}</option>
-        <option value="ask">Ask, and get an answer</option>
-        <option value="remind">Remind</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="on">Hold until <span class="faint">(optional)</span></label>
+      <label for="on">Say it on <span class="faint">(optional; otherwise the next call)</span></label>
       <input id="on" name="on" type="date" min="{{ min_date }}">
     </div>
-    <div class="field auto"><button class="btn" type="submit">Add</button></div>
+    <div class="field auto"><button class="btn" type="submit">Add to the next call</button></div>
   </div>
 </form>
 
@@ -37,7 +37,7 @@
     {% for m in queued %}
     <li>
       <div><span class="pill {{ m.kind }}">{{ {'say':'tell','ask':'ask','remind':'remind'}[m.kind] }}</span>{{ m.text }}
-        <div class="tiny faint">from {{ m.from_name }}{% if m.remind_on %} · from {{ m.remind_on.strftime('%a %d %b') }}{% endif %}</div></div>
+        <div class="byline" style="margin-top:.3rem">{{ av(m.from_name, 'sm') }} {{ m.from_name }}{% if m.remind_on %} · from {{ m.remind_on.strftime('%a %d %b') }}{% endif %}</div></div>
       <form method="post" action="/app/{{ parent.id }}/messages/{{ m.id }}/remove"><input type="hidden" name="next" value="{{ here }}"><button class="btn quiet" type="submit">Remove</button></form>
     </li>
     {% else %}<li class="empty">Nothing queued. Sunday will have its usual conversation.</li>{% endfor %}

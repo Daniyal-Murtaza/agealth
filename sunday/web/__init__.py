@@ -113,6 +113,8 @@ def create_app(services: Services) -> FastAPI:
         languages=LANGUAGE_NAMES,
         demo_login=settings.demo_login,
         static_v=_static_version(),
+        public_url=public_url,
+        hue=lambda name: sum(ord(c) for c in (name or "").lower()) % 6,
     )
 
     def render(request: Request, name: str, **ctx) -> HTMLResponse:
@@ -176,7 +178,7 @@ def create_app(services: Services) -> FastAPI:
             preferred_name=form.get("call_me") or form["parent_name"].split()[0],
             phone=_e164(form["parent_phone"]),
             language=form.get("language", "en"),
-            timezone=form.get("timezone", "UTC"),
+            timezone=form.get("timezone") or _tz_for_phone(form["parent_phone"]) or "UTC",
             call_time=form.get("call_time", "09:00"),
             introduced_by=f"your {form['relation']} {form['your_name']}".strip(),
             medications=[
@@ -210,6 +212,30 @@ def create_app(services: Services) -> FastAPI:
             )
         except Exception as exc:  # noqa: BLE001
             log.error("login link to %s failed: %s", member.name, exc)
+
+    for _slug, _title in (
+        ("privacy", "Privacy"),
+        ("terms", "Terms of service"),
+        ("security", "Security"),
+        ("consent", "Consent and recording"),
+        ("contact", "Contact"),
+        ("pricing", "Pricing"),
+    ):
+
+        def _make(slug: str, title: str):
+            async def page(request: Request):
+                return render(
+                    request,
+                    f"legal/{slug}.html",
+                    viewer=auth.viewer_from_request(request),
+                    page_title=title,
+                )
+
+            return page
+
+        app.add_api_route(
+            f"/{_slug}", _make(_slug, _title), methods=["GET"], response_class=HTMLResponse
+        )
 
     @app.get("/login", response_class=HTMLResponse)
     async def login_form(request: Request):
@@ -332,22 +358,64 @@ def create_app(services: Services) -> FastAPI:
             **ctx,
         )
 
-    @app.get("/app/more", response_class=HTMLResponse)
-    async def family_more(
-        request: Request,
-        parent: str = "",
-        done: str = "",
-        viewer: Viewer = Depends(current_viewer),
-    ):
-        """Everything on one long page: settings, family, the queue, the digest, export."""
+    @app.get("/app/more")
+    async def family_more(parent: str = "", viewer: Viewer = Depends(current_viewer)):
         p = _pick(viewer, parent)
+        return RedirectResponse(f"/app/{p.id}/settings", status_code=303)
+
+    @app.get("/app/{pid}/calls", response_class=HTMLResponse)
+    async def calls_page(
+        request: Request, pid: str, done: str = "", viewer: Viewer = Depends(current_viewer)
+    ):
+        """The timeline: one card per day, expanding to the quoted evidence."""
+        p = parent_for(viewer, pid)
+        ctx = _family_context(repo, p, viewer, twilio_ready=settings.twilio_ready())
         return render(
             request,
-            "family.html",
+            "calls.html",
             viewer=viewer,
             toast=TOASTS.get(done, ""),
-            nav="more",
-            **_family_context(repo, p, viewer, twilio_ready=settings.twilio_ready()),
+            nav="calls",
+            crumbs=[("Calls", "")],
+            days=_timeline(repo, p),
+            **ctx,
+        )
+
+    @app.get("/app/{pid}/family", response_class=HTMLResponse)
+    async def family_page(
+        request: Request, pid: str, done: str = "", viewer: Viewer = Depends(current_viewer)
+    ):
+        p = parent_for(viewer, pid)
+        return render(
+            request,
+            "members.html",
+            viewer=viewer,
+            toast=TOASTS.get(done, ""),
+            nav="family",
+            crumbs=[("Family", "")],
+            parent=p,
+            me=viewer.membership_for(p.id),
+            members=repo.family_for(p.id),
+            parents=viewer.parents,
+        )
+
+    @app.get("/app/{pid}/settings", response_class=HTMLResponse)
+    async def settings_page(
+        request: Request, pid: str, done: str = "", viewer: Viewer = Depends(current_viewer)
+    ):
+        p = parent_for(viewer, pid)
+        return render(
+            request,
+            "settings.html",
+            viewer=viewer,
+            toast=TOASTS.get(done, ""),
+            nav="settings",
+            crumbs=[("Settings", "")],
+            parent=p,
+            me=viewer.membership_for(p.id),
+            parents=viewer.parents,
+            timezones=_TIMEZONES,
+            digest=format_digest(p, compute_trends(repo, p, days=7)),
         )
 
     @app.get("/app/{pid}/c/{key}", response_class=HTMLResponse)
@@ -444,7 +512,7 @@ def create_app(services: Services) -> FastAPI:
             )
         return _back(
             f"{next}{'&' if '?' in next else '?'}done=queued" if next else "",
-            f"/app/more?parent={p.id}&done=queued#tomorrow",
+            f"/app/{p.id}/ask?done=queued",
         )
 
     @app.post("/app/{pid}/messages/{mid}/remove")
@@ -455,7 +523,7 @@ def create_app(services: Services) -> FastAPI:
         repo.delete_message(mid, p.id)
         return _back(
             f"{next}{'&' if '?' in next else '?'}done=removed" if next else "",
-            f"/app/more?parent={p.id}&done=removed#tomorrow",
+            f"/app/{p.id}/ask?done=removed",
         )
 
     @app.post("/app/{pid}/alerts/{aid}/ack")
@@ -480,13 +548,13 @@ def create_app(services: Services) -> FastAPI:
         text = text.strip()[:300]
         if text:
             repo.add_memory(p.id, text, topic=topic.strip()[:30], source="family")
-        return RedirectResponse(f"/app/more?parent={p.id}&done=remembered#knows", status_code=303)
+        return RedirectResponse(f"/app/{p.id}/settings?done=remembered#knows", status_code=303)
 
     @app.post("/app/{pid}/memories/{mem_id}/remove")
     async def remove_memory(pid: str, mem_id: int, viewer: Viewer = Depends(current_viewer)):
         p = parent_for(viewer, pid)
         repo.deactivate_memory(mem_id, p.id)
-        return RedirectResponse(f"/app/more?parent={p.id}&done=forgotten#knows", status_code=303)
+        return RedirectResponse(f"/app/{p.id}/settings?done=forgotten#knows", status_code=303)
 
     @app.post("/app/{pid}/settings")
     async def update_settings(
@@ -513,7 +581,7 @@ def create_app(services: Services) -> FastAPI:
             fields["preferred_name"] = preferred_name.strip()[:40]
         if fields:
             repo.update_parent(p.id, **fields)
-        return RedirectResponse(f"/app/more?parent={p.id}&done=saved#settings", status_code=303)
+        return RedirectResponse(f"/app/{p.id}/settings?done=saved", status_code=303)
 
     @app.post("/app/{pid}/members/{member_id}")
     async def update_member(
@@ -535,7 +603,7 @@ def create_app(services: Services) -> FastAPI:
             fields["channel"] = channel
         if fields:
             repo.update_family_member(member_id, **fields)
-        return RedirectResponse(f"/app/more?parent={p.id}&done=saved#family", status_code=303)
+        return RedirectResponse(f"/app/{p.id}/family?done=saved", status_code=303)
 
     @app.post("/app/{pid}/members")
     async def invite_member(
@@ -563,7 +631,7 @@ def create_app(services: Services) -> FastAPI:
                     else "info",
                 )
                 _send_login(m, digits_only(phone))
-        return RedirectResponse(f"/app/more?parent={p.id}&done=invited#family", status_code=303)
+        return RedirectResponse(f"/app/{p.id}/family?done=invited", status_code=303)
 
     @app.post("/app/{pid}/medications")
     async def medications(
@@ -580,7 +648,7 @@ def create_app(services: Services) -> FastAPI:
         if add.strip():
             meds.append({"name": add.strip()[:60], "when": when.strip()[:20] or "morning"})
         repo.update_parent(p.id, medications=meds)
-        return RedirectResponse(f"/app/more?parent={p.id}&done=saved#settings", status_code=303)
+        return RedirectResponse(f"/app/{p.id}/family?done=saved", status_code=303)
 
     @app.post("/app/{pid}/consent")
     async def consent(
@@ -591,30 +659,54 @@ def create_app(services: Services) -> FastAPI:
         p = parent_for(viewer, pid)
         repo.update_parent(p.id, consent_recording=recording == "yes")
         done = "recording_on" if recording == "yes" else "recording_off"
-        return RedirectResponse(f"/app/more?parent={p.id}&done={done}#settings", status_code=303)
+        return RedirectResponse(f"/app/{p.id}/settings?done={done}#recording", status_code=303)
 
     @app.post("/app/{pid}/call", response_class=HTMLResponse)
     async def call_now(request: Request, pid: str, viewer: Viewer = Depends(current_viewer)):
-        """Ring the parent now. This is how the introductory call is placed: the family member
-        is next to the parent (or on the phone with them) and introduces Sunday."""
+        """Have Sunday ring the parent now. This is how the introductory call is placed: the
+        family member is next to the parent and introduces Sunday. The page then follows the
+        call live: ringing, connected, writing the note, note ready."""
         p = parent_for(viewer, pid)
+        common = dict(viewer=viewer, parent=p, nav="home", crumbs=[("Calling", "")])
         if not settings.twilio_ready() or not settings.public_url:
+            return render(request, "call_now.html", placed=False, call_id="", **common)
+        live = [
+            c for c in repo.recent_calls(p.id, days=1) if c.status in ("scheduled", "in_progress")
+        ]
+        if live:
             return render(
-                request, "call_now.html", viewer=viewer, parent=p, placed=False, call_id=""
-            )
-        if any(c.status in ("scheduled", "in_progress") for c in repo.recent_calls(p.id, days=1)):
-            return render(
-                request,
-                "call_now.html",
-                viewer=viewer,
-                parent=p,
-                placed=True,
-                call_id="",
-                busy=True,
+                request, "call_now.html", placed=True, call_id=live[0].id, busy=True, **common
             )
         call_id = dial(repo, services.telephony, settings, p)
-        return render(
-            request, "call_now.html", viewer=viewer, parent=p, placed=True, call_id=call_id
+        return render(request, "call_now.html", placed=True, call_id=call_id, **common)
+
+    @app.get("/app/{pid}/calls/{call_id}/status.json")
+    async def call_status(pid: str, call_id: str, viewer: Viewer = Depends(current_viewer)):
+        """Polled by the live call page. Family only."""
+        p = parent_for(viewer, pid)
+        call = repo.get_call(call_id)
+        if call is None or call.parent_id != p.id:
+            raise HTTPException(status_code=404)
+        if call.status == "scheduled":
+            stage = "ringing"
+        elif call.status == "in_progress":
+            stage = "connected"
+        elif call.status == "completed" and call.notified_at is None:
+            stage = "writing"
+        elif call.status == "completed":
+            stage = "ready"
+        else:
+            stage = "no_answer"
+        seconds = 0
+        if call.started_at:
+            start = (
+                call.started_at if call.started_at.tzinfo else call.started_at.replace(tzinfo=UTC)
+            )
+            end = call.ended_at or datetime.now(UTC)
+            end = end if end.tzinfo else end.replace(tzinfo=UTC)
+            seconds = int((end - start).total_seconds())
+        return JSONResponse(
+            {"stage": stage, "seconds": seconds, "link": f"/app/{p.id}/calls/{call.id}"}
         )
 
     @app.get("/app/{pid}/calls/{call_id}/recording.mp3")
@@ -837,9 +929,52 @@ _TIMEZONES = _COMMON_TZ + sorted(
 
 
 def _e164(phone: str) -> str:
-    """Normalise to +digits. Accepts spaces, dashes and brackets."""
-    digits = digits_only(phone)
-    return f"+{digits}" if digits else phone.strip()
+    """Normalise to E.164 with libphonenumber; falls back to +digits for odd input."""
+    import phonenumbers
+
+    try:
+        n = phonenumbers.parse(phone, None)
+        return phonenumbers.format_number(n, phonenumbers.PhoneNumberFormat.E164)
+    except phonenumbers.NumberParseException:
+        digits = digits_only(phone)
+        return f"+{digits}" if digits else phone.strip()
+
+
+def _valid_phone(phone: str) -> bool:
+    """Structurally possible for its country (length and prefix). Not "assigned": that would
+    reject test ranges and some brand-new mobile blocks, which is worse than letting a typo
+    through to the introductory call, where it is caught by a human."""
+    import phonenumbers
+
+    try:
+        return phonenumbers.is_possible_number(phonenumbers.parse(phone, None))
+    except phonenumbers.NumberParseException:
+        return False
+
+
+# Where a parent most likely lives, from the country their phone belongs to. The form
+# offers this as the default and a short list to change it; nobody has to scroll past
+# Antarctica/Troll to find Karachi.
+_TZ_BY_REGION = {
+    "PK": "Asia/Karachi", "IN": "Asia/Kolkata", "BD": "Asia/Dhaka", "LK": "Asia/Colombo",
+    "NP": "Asia/Kathmandu", "AE": "Asia/Dubai", "SA": "Asia/Riyadh", "QA": "Asia/Qatar",
+    "GB": "Europe/London", "IE": "Europe/Dublin", "FR": "Europe/Paris", "DE": "Europe/Berlin",
+    "NL": "Europe/Amsterdam", "ES": "Europe/Madrid", "IT": "Europe/Rome", "TR": "Europe/Istanbul",
+    "US": "America/New_York", "CA": "America/Toronto", "MX": "America/Mexico_City",
+    "AU": "Australia/Sydney", "NZ": "Pacific/Auckland", "SG": "Asia/Singapore",
+    "MY": "Asia/Kuala_Lumpur", "ZA": "Africa/Johannesburg", "KE": "Africa/Nairobi",
+    "NG": "Africa/Lagos", "EG": "Africa/Cairo",
+}  # fmt: skip
+
+
+def _tz_for_phone(phone: str) -> str | None:
+    import phonenumbers
+
+    try:
+        region = phonenumbers.region_code_for_number(phonenumbers.parse(phone, None))
+    except phonenumbers.NumberParseException:
+        return None
+    return _TZ_BY_REGION.get(region or "")
 
 
 def _validate_start(form: dict) -> list[str]:
@@ -848,21 +983,22 @@ def _validate_start(form: dict) -> list[str]:
         errors.append("Please tell us your name.")
     if not form.get("relation"):
         errors.append("Please say how you are related (son, daughter, niece...).")
-    if len(digits_only(form.get("your_phone", ""))) < 7 or not form.get(
-        "your_phone", ""
-    ).startswith("+"):
-        errors.append("Your mobile number needs the country code, like +1 555 010 0001.")
+    if not _valid_phone(form.get("your_phone", "")):
+        errors.append(
+            "Your mobile number doesn't look right. Include the country code, like +1 555 010 0001."
+        )
     if len(form.get("parent_name", "")) < 2:
         errors.append("Please tell us your parent's name.")
-    if len(digits_only(form.get("parent_phone", ""))) < 7 or not form.get(
-        "parent_phone", ""
-    ).startswith("+"):
-        errors.append("Your parent's number needs the country code, like +92 300 1234567.")
+    if not _valid_phone(form.get("parent_phone", "")):
+        errors.append(
+            "Your parent's number doesn't look right. Include the country code, "
+            "like +92 300 1234567."
+        )
     if digits_only(form.get("your_phone", "")) == digits_only(form.get("parent_phone", "")):
         errors.append("Your number and your parent's number are the same.")
     if form.get("language", "en") not in LANGUAGE_NAMES:
         errors.append("Please pick a language.")
-    if form.get("timezone", "UTC") not in available_timezones():
+    if form.get("timezone") and form["timezone"] not in available_timezones():
         errors.append("Please pick a timezone.")
     try:
         hh, mm = form.get("call_time", "09:00").split(":")
@@ -1055,6 +1191,27 @@ def _highlighted_turns(call) -> list[dict]:
             pos = e0
         pieces.append(_html.escape(text[pos:]))
         out.append({"turn": t, "html": Markup("".join(pieces))})
+    return out
+
+
+def _timeline(repo, p) -> list[dict]:
+    """One entry per call day: the note, mood, and the quoted evidence behind it."""
+    today = p.local_today()
+    out = []
+    for c in repo.recent_calls(p.id, days=30, limit=40):
+        if c.status not in ("completed", "no_answer"):
+            continue
+        when = p.local_now(c.started_at or c.scheduled_for)
+        full = repo.get_call(c.id) if c.status == "completed" else None
+        out.append(
+            {
+                "call": c,
+                "label": _day_label(when.date(), today),
+                "date": when,
+                "evidence": [o for o in (full.observations if full else []) if o.evidence],
+                "alerts": list(full.alerts) if full else [],
+            }
+        )
     return out
 
 

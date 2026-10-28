@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ parent.address() }}, {{ local(call.started_at).strftime('%A %d %b') }} - Sunday{% endblock %}
 {% block body %}
-<p class="small"><a href="/app?parent={{ parent.id }}">&larr; {{ parent.address() }}'s page</a></p>
+{% set nav = 'calls' %}
+{% set crumbs = [('Calls', '/app/' ~ parent.id ~ '/calls'), (local(call.started_at).strftime('%A %d %b'), '')] %}
+{% include "_appnav.html" %}
 <div class="hero-parent" style="margin-top:0">
   <div>
     <h1 style="font-size:2.2rem">{% if call.direction == 'inbound' %}{{ parent.address() }} called Sunday{% else %}Sunday called {{ parent.address() }}{% endif %}</h1>

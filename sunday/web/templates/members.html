@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_avatar.html" import av %}
+{% block title %}Family - {{ parent.address() }} - Sunday{% endblock %}
+{% block body %}
+{% include "_appnav.html" %}
+{% set tier_words = {'info':'everything','today':'check-today and urgent','now':'urgent only'} %}
+<section class="greet compact">
+  <h1>Family</h1>
+  <p class="headline">Who hears what about {{ parent.address() }}. Each person chooses their own level.</p>
+</section>
+
+<div class="card">
+  <ul class="list">
+    {% for m in members %}
+    <li>
+      <div style="flex:1;display:flex;gap:.8rem;align-items:flex-start">
+        {{ av(m.name, 'lg') }}
+        <div style="flex:1">
+          <b>{{ m.name }}</b> <span class="faint">{{ m.relation }}</span>{% if m.is_primary %} <span class="pill">primary</span>{% endif %}
+          {% if me and m.id == me.id %}
+          <form method="post" action="/app/{{ parent.id }}/members/{{ m.id }}" class="row mt" style="gap:.5rem">
+            <div class="field"><label>I want</label><select name="min_alert_tier"><option value="info" {{ 'selected' if m.min_alert_tier=='info' }}>everything</option><option value="today" {{ 'selected' if m.min_alert_tier=='today' }}>check-today + urgent</option><option value="now" {{ 'selected' if m.min_alert_tier=='now' }}>urgent only</option></select></div>
+            <div class="field"><label>by</label><select name="channel"><option value="whatsapp" {{ 'selected' if m.channel=='whatsapp' }}>WhatsApp</option><option value="sms" {{ 'selected' if m.channel=='sms' }}>SMS</option><option value="console" {{ 'selected' if m.channel=='console' }}>console</option></select></div>
+            <div class="field auto"><button class="btn quiet" type="submit">Save</button></div>
+          </form>
+          {% else %}<div class="tiny faint">{{ tier_words[m.min_alert_tier] }} · {{ m.channel }}</div>{% endif %}
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+<h3 class="daylabel">Invite a sibling</h3>
+<form method="post" action="/app/{{ parent.id }}/members" class="card tight">
+  <div class="row">
+    <div class="field"><label for="iname">Name</label><input id="iname" name="name" type="text" maxlength="60" required></div>
+    <div class="field"><label for="irel">Relation</label><input id="irel" name="relation" type="text" placeholder="daughter" maxlength="30"></div>
+  </div>
+  <div class="row">
+    <div class="field" style="flex:2 1 200px"><label for="iphone">Mobile, with country code</label><input id="iphone" name="phone" type="tel" inputmode="tel" placeholder="+44 7700 900 003" required></div>
+    <div class="field"><label for="itier">They get</label><select id="itier" name="min_alert_tier"><option value="info">everything</option><option value="today">check-today + urgent</option><option value="now">urgent only</option></select></div>
+    <div class="field auto"><button class="btn" type="submit">Invite</button></div>
+  </div>
+  <div class="hint">They get a sign-in link on that number and the notes at the level you choose.</div>
+</form>
+{% endblock %}

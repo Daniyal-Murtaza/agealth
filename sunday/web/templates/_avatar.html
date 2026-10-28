@@ -1,0 +1,6 @@
+{% macro av(name, size='') -%}
+{%- set n = (name or '?')|trim -%}
+{%- set parts = n.split(' ') -%}
+{%- set initials = (parts[0][:1] ~ (parts[1][:1] if parts|length > 1 else ''))|upper -%}
+<span class="av {{ size }} av-{{ hue(n) }}" title="{{ n }}" aria-hidden="true">{{ initials }}</span>
+{%- endmacro %}

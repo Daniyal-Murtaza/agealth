@@ -2,36 +2,60 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Sunday{% endblock %}</title>
   <meta name="description" content="A warm daily phone call for an ageing parent, on the phone they already have. The family gets a short note afterwards; if something is wrong, an alert straight away.">
-  <meta name="theme-color" content="#f7f2ea">
-  <meta property="og:title" content="Sunday - a daily call for your parent">
-  <meta property="og:description" content="Someone calls Amma every morning. You hear how it went. The parent never touches technology.">
+  <meta name="theme-color" content="#f7f2ea" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#17150f" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sunday">
+  <meta property="og:title" content="{% block ogtitle %}Sunday - a daily call for your parent{% endblock %}">
+  <meta property="og:description" content="Someone calls Amma every morning. You hear how it went. The parent never touches technology.">
+  <meta property="og:image" content="{{ public_url }}/static/img/og.png">
+  <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/img/icon-512.png">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="preload" href="/static/fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/sunday.css?v={{ static_v }}">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23c2553a'/%3E%3C/svg%3E">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <div class="wrap">
   <header class="bar {% if viewer %}lined{% endif %}">
-    <a class="brand" href="/"><span class="dot"></span>Sunday</a>
-    <nav>
+    <a class="brand" href="{{ '/app' if viewer else '/' }}" aria-label="Sunday home"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="36" r="15" fill="#c2553a"/><path d="M8 50h48" stroke="#c2553a" stroke-width="4" stroke-linecap="round"/><g stroke="#c2553a" stroke-width="3.5" stroke-linecap="round"><path d="M32 8v6M14 16l4 4M50 16l-4 4M6 36h5M53 36h5"/></g></svg>Sunday</a>
+    <nav aria-label="Site">
       {% if viewer %}
         <form class="inline-form" method="post" action="/logout"><button class="btn quiet" type="submit">Sign out</button></form>
       {% else %}
         <a class="hide-sm" href="/#how">How it works</a>
+        <a class="hide-sm" href="/pricing">Pricing</a>
         <a class="hide-xs" href="/login">Family sign in</a>
         <a class="btn sm" href="/start">Start with your parent</a>
       {% endif %}
     </nav>
   </header>
+  <main id="main">
   {% block body %}{% endblock %}
+  </main>
   <footer>
-    <span>Sunday is an assistant sent by the family, not a doctor and not a person. It never gives medical advice and never asks for money.</span>
-    <span>The family owns every word: export or delete at any time.</span>
+    <div>
+      <b>Sunday</b>
+      <p class="mb0">An assistant sent by the family, not a doctor and not a person. It never gives medical advice and never asks for money. The family owns every word: export or delete at any time.</p>
+    </div>
+    <div>
+      <b>Product</b>
+      <ul><li><a href="/#how">How it works</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/start">Start with your parent</a></li><li><a href="/login">Family sign in</a></li></ul>
+    </div>
+    <div>
+      <b>Trust</b>
+      <ul><li><a href="/privacy">Privacy</a></li><li><a href="/terms">Terms</a></li><li><a href="/security">Security</a></li><li><a href="/consent">Consent &amp; recording</a></li><li><a href="/contact">Contact</a></li></ul>
+    </div>
   </footer>
 </div>
-{% if toast %}<div class="toast" role="status"><span class="tick">✓</span>{{ toast }}</div>{% endif %}
+{% if toast %}<div class="toast" role="status" aria-live="polite"><span class="tick" aria-hidden="true">✓</span>{{ toast }}</div>{% endif %}
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/static/sw.js").catch(function () {});</script>
 </body>
 </html>

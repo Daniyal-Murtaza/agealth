@@ -1,0 +1,31 @@
+{% extends "legal/_legal_base.html" %}
+{% block prose %}
+<p class="lede muted">The short version: your parent's words belong to your family. We keep them to do the job you asked for, we show them only to the family members you add, we never sell them, and you can take them or delete them at any time.</p>
+<h2>What we hold</h2>
+<ul>
+<li><b>About the parent:</b> name, phone number, language, timezone, call time, medications the call asks about, and the facts the family tells Sunday ("the grandchildren are Ayaan and Zara").</li>
+<li><b>About each family member:</b> name, relation, mobile number, which alerts they want and on which channel.</li>
+<li><b>From each call:</b> the transcript, the note written for the family, the observations and alerts derived from it, and, only if the parent has agreed, a recording.</li>
+</ul>
+<h2>What we do with it</h2>
+<ul>
+<li>We place the calls, write the notes and send them to the family members you chose, at the alert level each chose.</li>
+<li>Transcripts are sent to a language-model provider to write the note and to hold the conversation. They are not used to train models. Keyword safety checks run on our own servers before any model is involved.</li>
+<li>Speech and messaging are carried by our telephony provider. Recordings, when enabled, are stored with them and served only to signed-in family members through Sunday.</li>
+</ul>
+<h2>What we never do</h2>
+<ul>
+<li>Sell, rent or share data with advertisers or data brokers.</li>
+<li>Show anything about a parent to anyone outside the family members on their record.</li>
+<li>Record a call without the parent's agreement, or without saying so at the start of every recorded call.</li>
+<li>Give medical advice, or infer a diagnosis from what the parent says.</li>
+</ul>
+<h2>Your rights</h2>
+<ul>
+<li><b>Export:</b> every call, note, alert and memory as one file, from Settings, at any time.</li>
+<li><b>Delete:</b> contact us and we remove everything within 7 days and confirm by message.</li>
+<li><b>Correct:</b> edit what Sunday knows, medications, times and alert levels from your page.</li>
+</ul>
+<h2>Retention and security</h2>
+<p>Data is kept while the account is active and deleted within 30 days of closure. Sign-in is by one-time link to a verified phone; there are no passwords to leak. See <a href="/security">Security</a>.</p>
+{% endblock %}
