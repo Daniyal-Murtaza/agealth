@@ -50,6 +50,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from sunday.app import Services
 from sunday.brain.conversation import LANGUAGE_NAMES
@@ -64,6 +65,7 @@ from sunday.geo import (
     is_callable,
     pretty,
     timezone_for,
+    tz_label,
 )
 from sunday.logging_setup import get_logger
 from sunday.notify.digest import compute_trends, format_digest
@@ -141,6 +143,11 @@ def create_app(services: Services) -> FastAPI:
                 log.warning(
                     "cross-site %s to %s refused from %s", request.method, request.url.path, origin
                 )
+                if "text/html" in request.headers.get("accept", ""):
+                    title, text = ERROR_COPY[403]
+                    page = render(request, "error.html", code=403, title=title, text=text)
+                    page.status_code = 403
+                    return page
                 return PlainTextResponse("cross-site request refused", status_code=403)
         response = await call_next(request)
         h = response.headers
@@ -173,11 +180,44 @@ def create_app(services: Services) -> FastAPI:
         hue=lambda name: sum(ord(c) for c in (name or "").lower()) % 6,
         pretty=pretty,
         service_area=SERVICE_AREA_NAME,
+        tz_label=tz_label,
+        clock=_clock,
+        hhmm=_hhmm,
     )
+    templates.env.filters["clock"] = _clock
 
     def render(request: Request, name: str, **ctx) -> HTMLResponse:
         ctx.setdefault("viewer", None)
         return templates.TemplateResponse(request, name, ctx)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def friendly_errors(request: Request, exc: StarletteHTTPException):
+        """A person in a browser gets a page in Sunday's voice; machines (Twilio, the live-call
+        poller, anything asking for JSON) keep the plain JSON body. Status codes are unchanged,
+        and 303s used as redirects still redirect."""
+        if exc.status_code in (301, 302, 303, 307, 308) and exc.headers:
+            return RedirectResponse(exc.headers["Location"], status_code=exc.status_code)
+        path = request.url.path
+        wants_json = (
+            path.startswith("/twilio/")
+            or path.endswith(".json")
+            or "text/html" not in request.headers.get("accept", "")
+        )
+        if wants_json:
+            return JSONResponse(
+                {"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers
+            )
+        title, text = ERROR_COPY.get(exc.status_code, ERROR_COPY[500])
+        resp = render(
+            request,
+            "error.html",
+            viewer=auth.viewer_from_request(request),
+            code=exc.status_code,
+            title=title,
+            text=text,
+        )
+        resp.status_code = exc.status_code
+        return resp
 
     # -- who is asking ---------------------------------------------------------------
 
@@ -488,6 +528,7 @@ def create_app(services: Services) -> FastAPI:
             me=viewer.membership_for(p.id),
             parents=viewer.parents,
             timezones=_TIMEZONES,
+            memories=list(reversed(repo.memories_for(p.id))),
             digest=format_digest(p, compute_trends(repo, p, days=7)),
         )
 
@@ -994,6 +1035,40 @@ def _static_version() -> str:
 _COMMON_TZ = list(US_TIMEZONES)
 _TIMEZONES = list(US_TIMEZONES)  # US-only service: no other zones are offered
 
+# Error pages speak like the rest of the product: short, calm, and with a way back.
+ERROR_COPY = {
+    403: (
+        "That didn't go through",
+        "The page refused this request. Go back and try once more from your own page.",
+    ),
+    404: (
+        "There's nothing here",
+        "The link may be old, or it belongs to another family. Your own page is one tap away.",
+    ),
+    405: ("That didn't go through", "This address doesn't take that kind of request."),
+    429: ("One moment", "Too many tries in a short time. Wait a few minutes and try again."),
+    500: (
+        "Something went wrong on our side",
+        "Nothing you did caused it. Try again in a minute; if it keeps happening, contact us.",
+    ),
+}
+
+
+def _clock(dt) -> str:
+    """9:04 AM rather than 09:04: the way the families we serve read a clock."""
+    if dt is None:
+        return ""
+    return dt.strftime("%I:%M %p").lstrip("0")
+
+
+def _hhmm(value: str | None) -> str:
+    """The same, for a stored 'HH:MM' call time."""
+    try:
+        hh, mm = (value or "09:00").split(":")
+        return _clock(datetime(2000, 1, 1, int(hh), int(mm)))
+    except ValueError:
+        return value or ""
+
 
 _e164 = e164
 
@@ -1251,10 +1326,15 @@ def _timeline(repo, p) -> list[dict]:
             continue
         when = p.local_now(c.started_at or c.scheduled_for)
         full = repo.get_call(c.id) if c.status == "completed" else None
+        label = _day_label(when.date(), today)
+        # The small line under the label adds only what the label lacks: the date when the
+        # label is a day name, the time otherwise. "Thu 22 Oct / 22 Oct" said it twice.
+        sub = _clock(when) if label[:3] in _DAY_ABBR else f"{when:%b} {when.day}, {_clock(when)}"
         out.append(
             {
                 "call": c,
-                "label": _day_label(when.date(), today),
+                "label": label,
+                "sub": sub,
                 "date": when,
                 "evidence": [o for o in (full.observations if full else []) if o.evidence],
                 "alerts": list(full.alerts) if full else [],
@@ -1270,7 +1350,10 @@ def _day_label(d: date, today: date) -> str:
         return "Yesterday"
     if today - d < timedelta(days=7):
         return d.strftime("%A")
-    return d.strftime("%a %d %b")
+    return f"{d:%a %b} {d.day}"
+
+
+_DAY_ABBR = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 
 
 def _next_call_text(p, now_local: datetime) -> str:
@@ -1279,4 +1362,4 @@ def _next_call_text(p, now_local: datetime) -> str:
     if target <= now_local:
         target += timedelta(days=1)
     day = "today" if target.date() == now_local.date() else "tomorrow"
-    return f"{day} at {target:%H:%M}"
+    return f"{day} at {_clock(target)}"

@@ -19,11 +19,11 @@
           </div>
           <div class="field"><label for="your_phone">Your mobile</label>
             <div class="phone-in">
-              <select id="your_cc" aria-label="Country code" data-for="your_phone"></select>
-              <input id="your_phone" name="your_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(614) 555-0102" value="{{ form.your_phone or '' }}" required>
+              <span class="cc" aria-hidden="true">🇺🇸 +1</span>
+              <input id="your_phone" name="your_phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="(614) 555-0102" value="{{ form.your_phone or '' }}" required aria-describedby="your_phone_hint">
             </div>
-            <div class="hint">Notes and alerts come here by text or WhatsApp, and it is how you sign in. No password.</div>
-            <div class="err" data-err="your_phone" hidden>That number doesn't look right for the country chosen.</div>
+            <div class="hint" id="your_phone_hint">A US mobile. Notes and alerts come here by text or WhatsApp, and it is how you sign in. No password.</div>
+            <div class="err" data-err="your_phone" hidden>That doesn't look like a US number. Ten digits, like (614) 555-0102.</div>
           </div>
           <div class="wnav"><span></span><button class="btn" type="button" data-next>Next: your parent</button></div>
         </fieldset>
@@ -36,20 +36,19 @@
           </div>
           <div class="field"><label for="parent_phone">Their phone</label>
             <div class="phone-in">
-              <select id="parent_cc" aria-label="Country code" data-for="parent_phone"></select>
-              <input id="parent_phone" name="parent_phone" type="tel" inputmode="tel" placeholder="(614) 555-0101" value="{{ form.parent_phone or '' }}" required>
+              <span class="cc" aria-hidden="true">🇺🇸 +1</span>
+              <input id="parent_phone" name="parent_phone" type="tel" inputmode="tel" placeholder="(614) 555-0101" value="{{ form.parent_phone or '' }}" required aria-describedby="parent_phone_hint">
             </div>
-            <div class="hint">Any US phone that rings. Landline or cell. Nothing to install.</div>
-            <div class="err" data-err="parent_phone" hidden>That number doesn't look right for the country chosen.</div>
-            <div class="hint">Sunday calls numbers in the United States for now. Family members who get the notes can be anywhere.</div>
+            <div class="hint" id="parent_phone_hint">Any US phone that rings: landline or cell, nothing to install. Sunday calls numbers in the United States for now; family members who get the notes can be anywhere.</div>
+            <div class="err" data-err="parent_phone" hidden>That doesn't look like a US number. Ten digits, like (614) 555-0101.</div>
           </div>
           <div class="row">
             <div class="field"><label for="language">Language</label>
               <select id="language" name="language">{% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if (form.language or 'en') == code }}>{{ name }}</option>{% endfor %}</select></div>
             <div class="field"><label for="call_time">Daily call time <span class="faint">(their local time)</span></label><input id="call_time" name="call_time" type="time" value="{{ form.call_time or '09:00' }}"></div>
             <div class="field"><label for="timezone">Their timezone</label>
-              <select id="timezone" name="timezone"><option value="">Work it out from her area code</option>{% for tz in timezones %}<option value="{{ tz }}" {{ 'selected' if form.timezone == tz }}>{{ tz }}</option>{% endfor %}</select>
-              <div class="hint" id="tzhint"></div></div>
+              <select id="timezone" name="timezone"><option value="">Work it out from the area code</option>{% for tz in timezones %}<option value="{{ tz }}" {{ 'selected' if form.timezone == tz }}>{{ tz_label(tz) }}</option>{% endfor %}</select>
+              <div class="hint" id="tzhint">Leave it and we'll use the area code of their number. Change it if they live elsewhere.</div></div>
           </div>
           <div class="field"><label for="medications">Medications Sunday should ask about <span class="faint">(optional, comma separated)</span></label><input id="medications" name="medications" type="text" placeholder="blood pressure pill, eye drops" value="{{ form.medications or '' }}" maxlength="200"></div>
           <div class="field"><label for="about">A few things Sunday should know <span class="faint">(optional, one per line)</span></label>
@@ -61,7 +60,7 @@
           <h3>The first call</h3>
           <p class="muted small">Here's how Sunday will greet <span data-echo="call_me">them</span>:</p>
           <div class="preview"><div class="who">Sunday</div><div class="say" id="greet">Hello Mom, it's Sunday calling, the daily call from your son Daniel. How are you today?</div></div>
-          <p class="small muted mt">After you finish here we send a sign-in link to your phone. On your page, tap <b>Have Sunday call now</b> while you are with them. Sunday introduces itself; you introduce Sunday. Daily calls start the next morning at <span data-echo="call_time">09:00</span>.</p>
+          <p class="small muted mt">After you finish here we send a sign-in link to your phone. On your page, tap <b>Have Sunday call now</b> while you are with them. Sunday introduces itself; you introduce Sunday. Daily calls start the next morning at <span data-echo="call_time">9:00 AM</span>.</p>
           <div class="field mt"><label class="check">
             <input type="checkbox" name="confirm" value="yes" {{ 'checked' if form.confirm == 'yes' }}>
             <span>I am a family member, and my parent knows I am setting this up. Sunday will always say it is an assistant sent by the family.</span></label></div>
@@ -87,38 +86,29 @@
 </div>
 <script>
 (function () {
-  // Country picker: common countries first. Formats as you type (digit groups), prefixes the
-  // code, and infers the parent's timezone. Server-side libphonenumber is the real check.
-  var C = [["US","United States","1","America/New_York"],["CA","Canada","1","America/Toronto"],["GB","United Kingdom","44","Europe/London"],["MX","Mexico","52","America/Mexico_City"],["IN","India","91","Asia/Kolkata"],["PK","Pakistan","92","Asia/Karachi"],["PH","Philippines","63","Asia/Manila"],["AE","UAE","971","Asia/Dubai"],["AU","Australia","61","Australia/Sydney"],["DE","Germany","49","Europe/Berlin"]];
-  function flag(cc) { return String.fromCodePoint.apply(null, cc.split('').map(function (c) { return 127397 + c.charCodeAt(0); })); }
-  function fill(sel, def) { C.forEach(function (c) { var o = document.createElement('option'); o.value = c[2]; o.dataset.tz = c[3]; o.dataset.cc = c[0]; o.textContent = flag(c[0]) + ' ' + c[1] + ' +' + c[2]; if (c[0] === def) o.selected = true; sel.appendChild(o); }); }
-  function wire(sel, inp, onTz) {
-    var isUS = /^\+1\b/.test(inp.value);
-    fill(sel, inp.value ? guess(inp.value) : 'US');
-    function guess(v) { var d = v.replace(/\D/g, ''); var best = null; C.forEach(function (c) { if (d.indexOf(c[2]) === 0 && (!best || c[2].length > best[2].length)) best = c; }); return best ? best[0] : 'US'; }
-    function fmt() {
-      var cc = sel.value, d = inp.value.replace(/\D/g, '');
-      if (d.indexOf(cc) === 0) d = d.slice(cc.length);
-      var groups = d.match(/.{1,3}/g) || [];
-      inp.value = '+' + cc + (d ? ' ' + groups.join(' ') : ' ');
-      if (onTz) onTz(sel.selectedOptions[0].dataset.tz);
-    }
-    sel.addEventListener('change', fmt);
-    inp.addEventListener('blur', fmt);
-    inp.addEventListener('input', function () { if (!inp.value.startsWith('+')) fmt(); });
-    if (!inp.value) inp.value = '+' + sel.value + ' ';
-    if (onTz) onTz(sel.selectedOptions[0].dataset.tz);
+  // US numbers only: a fixed +1, and the ten digits format as you type, (614) 555-0101.
+  // Server-side libphonenumber is the real check; this just keeps the field tidy.
+  function national(v) { var d = v.replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); return d.slice(0, 10); }
+  function fmt(d) { if (d.length < 4) return d; if (d.length < 7) return '(' + d.slice(0, 3) + ') ' + d.slice(3); return '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6); }
+  function wire(inp) {
+    var err = document.querySelector('[data-err="' + inp.id + '"]');
+    function tidy() { var d = national(inp.value); inp.value = fmt(d); if (err) err.hidden = !(d.length && d.length < 10); }
+    inp.addEventListener('input', function () { var d = national(inp.value); inp.value = fmt(d); if (err && d.length === 10) err.hidden = true; });
+    inp.addEventListener('blur', tidy);
+    if (inp.value) tidy();
   }
-  var tzSel = document.getElementById('timezone'), tzHint = document.getElementById('tzhint');
-  wire(document.getElementById('your_cc'), document.getElementById('your_phone'));
-  wire(document.getElementById('parent_cc'), document.getElementById('parent_phone'), function (tz) { if (!tzSel.value || tzSel.dataset.auto === '1') { tzHint.textContent = 'We\u2019ll use ' + tz + ' from the number. Change it if they live elsewhere.'; } });
-  tzSel.addEventListener('change', function () { tzHint.textContent = tzSel.value ? '' : tzHint.textContent; });
+  wire(document.getElementById('your_phone'));
+  wire(document.getElementById('parent_phone'));
 
   // Wizard.
   var steps = document.querySelectorAll('.wstep'), bars = document.querySelectorAll('.progress span'), cur = 1;
   function show(n) { cur = n; steps.forEach(function (s) { s.classList.toggle('on', +s.dataset.step === n); }); bars.forEach(function (b) { b.classList.toggle('on', +b.dataset.i <= n); }); if (n === 3) preview(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   function valid(n) {
-    var ok = true; steps[n - 1].querySelectorAll('input[required]').forEach(function (i) { if (!i.value.trim() || (i.type === 'tel' && i.value.replace(/\D/g, '').length < 7)) { ok = false; i.focus(); i.reportValidity && i.reportValidity(); } });
+    var ok = true;
+    steps[n - 1].querySelectorAll('input[required]').forEach(function (i) {
+      var bad = !i.value.trim() || (i.type === 'tel' && national(i.value).length !== 10);
+      if (bad && ok) { ok = false; i.focus(); if (i.type === 'tel') { var e = document.querySelector('[data-err="' + i.id + '"]'); if (e) e.hidden = false; } else if (i.reportValidity) i.reportValidity(); }
+    });
     return ok;
   }
   document.querySelectorAll('[data-next]').forEach(function (b) { b.addEventListener('click', function () { if (valid(cur)) show(cur + 1); }); });
@@ -128,7 +118,7 @@
     var me = val('call_me') || (val('parent_name').split(' ')[0] || 'Mom'), who = (val('relation') && val('your_name')) ? 'your ' + val('relation') + ' ' + val('your_name') : 'your family';
     var g = { en: 'Hello ' + me + ", it's Sunday calling, the daily call from " + who + '. How are you today?', es: 'Hola ' + me + ', le habla Sunday, la llamada diaria de ' + who + '. ¿Cómo está hoy?', ur: 'السلام علیکم ' + me + '، میں سنڈے ہوں، ' + who + ' کی طرف سے روز کی کال۔ آج آپ کیسی ہیں؟', hi: 'नमस्ते ' + me + ', मैं सनडे हूँ, ' + who + ' की तरफ़ से रोज़ का फ़ोन। आज आप कैसी हैं?', pa: 'ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ' + me + ', ਮੈਂ ਸੰਡੇ ਹਾਂ, ' + who + ' ਵੱਲੋਂ ਰੋਜ਼ ਦਾ ਫ਼ੋਨ। ਅੱਜ ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?' };
     document.getElementById('greet').textContent = g[val('language')] || g.en;
-    document.querySelectorAll('[data-echo]').forEach(function (e) { var v = val(e.dataset.echo); if (v) e.textContent = v; });
+    document.querySelectorAll('[data-echo]').forEach(function (e) { var v = val(e.dataset.echo); if (e.dataset.echo === 'call_time' && /^\d\d:\d\d$/.test(v)) { var h = +v.slice(0, 2); v = (h % 12 || 12) + v.slice(2) + (h < 12 ? ' AM' : ' PM'); } if (v) e.textContent = v; });
   }
   // If the server sent errors back, open the step that has the first problem.
   if (document.querySelector('.flash.warn')) { var t = document.querySelector('.flash.warn').textContent; show(/parent|language|timezone|call time/i.test(t) ? 2 : (/confirm/i.test(t) ? 3 : 1)); }

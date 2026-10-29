@@ -16,7 +16,7 @@
         <div class="field"><label for="lang">Language</label>
           <select id="lang" name="language">{% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if code == parent.language }}>{{ name }}</option>{% endfor %}</select></div>
         <div class="field"><label for="tz">Timezone</label>
-          <select id="tz" name="timezone">{% for tz in timezones %}<option value="{{ tz }}" {{ 'selected' if tz == parent.timezone }}>{{ tz }}</option>{% endfor %}</select></div>
+          <select id="tz" name="timezone">{% for tz in timezones %}<option value="{{ tz }}" {{ 'selected' if tz == parent.timezone }}>{{ tz_label(tz) }}</option>{% endfor %}</select></div>
         <div class="field"><label for="pn">Sunday calls them</label><input id="pn" name="preferred_name" type="text" value="{{ parent.preferred_name }}" maxlength="40"></div>
         <div class="field auto"><button class="btn sm" type="submit">Save</button></div>
       </div>
@@ -46,7 +46,11 @@
           <span class="track"></span>
           <span class="small">{{ 'On' if parent.consent_recording else 'Off' }}</span>
         </label>
+        {% if parent.consent_recording %}
         <p class="small muted mt">{{ parent.address() }} has agreed that calls may be recorded for the family to listen to. Sunday says "this call is recorded for the family, as you agreed" at the start of every recorded call. <a href="/consent">Our consent policy</a>.</p>
+        {% else %}
+        <p class="small muted mt">Calls are not recorded. Turn this on only after {{ parent.address() }} has agreed; Sunday will then say "this call is recorded for the family, as you agreed" at the start of every call, and you can listen from the call page. <a href="/consent">Our consent policy</a>.</p>
+        {% endif %}
         <noscript><button class="btn quiet" type="submit">Save</button></noscript>
       </form>
     </div>

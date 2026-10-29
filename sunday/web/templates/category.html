@@ -15,7 +15,7 @@
   {% for c in calls %}
   <details class="day" {{ 'open' if loop.index == 1 }}>
     <summary>
-      <span class="d">{{ local(c.started_at).strftime('%a') }}<small>{{ local(c.started_at).strftime('%d %b') }}</small></span>
+      <span class="d">{{ local(c.started_at).strftime('%a') }}<small>{{ local(c.started_at).strftime('%b') }} {{ local(c.started_at).day }}</small></span>
       <span class="s"><span class="mood {{ c.mood or 'unclear' }}" aria-label="{{ mood_label(c.mood) }}">{{ {'bright':'B','ok':'O','low':'L'}.get(c.mood, '') }}</span> {{ c.summary }}{% if c.direction == 'inbound' %} <span class="pill">called in</span>{% endif %}</span>
       <span class="caret" aria-hidden="true">›</span>
     </summary>

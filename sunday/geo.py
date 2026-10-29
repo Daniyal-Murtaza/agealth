@@ -26,6 +26,23 @@ US_TIMEZONES = [
     "America/Puerto_Rico",
 ]
 
+# What a family member reads instead of the IANA identifier.
+TIMEZONE_LABELS = {
+    "America/New_York": "Eastern Time",
+    "America/Chicago": "Central Time",
+    "America/Denver": "Mountain Time",
+    "America/Phoenix": "Arizona (no daylight saving)",
+    "America/Los_Angeles": "Pacific Time",
+    "America/Anchorage": "Alaska Time",
+    "Pacific/Honolulu": "Hawaii Time",
+    "America/Puerto_Rico": "Puerto Rico (Atlantic Time)",
+}
+
+
+def tz_label(tz: str | None) -> str:
+    """'Eastern Time' for America/New_York; an unknown zone falls back to its own name."""
+    return TIMEZONE_LABELS.get(tz or "", (tz or "").replace("_", " "))
+
 
 class OutsideServiceAreaError(ValueError):
     def __init__(self, phone: str, region: str | None) -> None:

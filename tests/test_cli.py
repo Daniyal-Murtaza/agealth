@@ -940,7 +940,8 @@ def test_onboarding_infers_timezone_and_validates_numbers_properly(env):
     # A number that is impossible for its country is rejected with a plain message.
     bad = dict(START, your_phone="+1 555", parent_phone="+1 614 555 0199", timezone="")
     r = client.post("/start", data=bad)
-    assert "doesn't look right" in r.text and len(svc.repo.list_parents()) == 1
+    # (Jinja escapes the apostrophe, so match the words around it.)
+    assert "look right" in r.text and len(svc.repo.list_parents()) == 1
 
 
 # --------------------------------------------------------------- security regression tests
@@ -1057,3 +1058,53 @@ def test_invite_validates_the_number_and_caps_the_family(env):
     for i in range(20):
         client.post(f"/app/{pid}/members", data={"name": f"M{i}", "phone": f"(312) 555-0{100 + i}"})
     assert len(svc.repo.family_for(pid)) <= 12
+
+
+def test_errors_are_pages_for_people_and_json_for_machines(env):
+    pid = _setup(env)
+    svc, messenger, client = _web(env)
+    html = {"Accept": "text/html,application/xhtml+xml"}
+    # A browser on a dead link gets a page in Sunday's voice, with the right status.
+    r = client.get("/nothing-here", headers=html)
+    assert r.status_code == 404 and "nothing here" in r.text and "Sunday" in r.text
+    # Another family's parent is still a 404 to a signed-in member, as a page.
+    _sign_in(client, messenger, "+1 555 0001")
+    r = client.get("/app/par_someone_else", headers=html)
+    assert r.status_code == 404 and "Back to your page" in r.text
+    # A cross-site POST refusal is a page too.
+    r = client.post(
+        f"/app/{pid}/memories",
+        data={"text": "x", "topic": ""},
+        headers={**html, "Origin": "https://evil.example"},
+    )
+    assert r.status_code == 403 and "go through" in r.text
+    # Machines keep JSON: the Twilio router, .json routes, and anyone not asking for HTML.
+    r = client.get("/app/par_someone_else/export.json", headers=html)
+    assert r.status_code == 404 and r.json()["detail"]
+    r = client.get("/nothing-here", headers={"Accept": "application/json"})
+    assert r.status_code == 404 and r.json() == {"detail": "Not Found"}
+    # Redirect-by-exception still redirects (signed-out /app goes to /login).
+    plain = TestClient(create_app(svc), follow_redirects=False)
+    r = plain.get("/app", headers=html)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+
+
+def test_the_family_page_reads_like_an_american_clock(env):
+    pid = _setup(env)
+    svc, messenger, client = _web(env)
+    svc.repo.update_parent(pid, call_time="09:00", timezone="America/New_York")
+    _sign_in(client, messenger, "+1 555 0001")
+    home = client.get(f"/app?parent={pid}").text
+    # The timezone has a name a family member recognises, and times are 12-hour.
+    assert "Eastern Time" in home and "America/New_York" not in home
+    assert "at 9:00 AM" in home and "at 09:00" not in home
+    settings = client.get(f"/app/{pid}/settings").text
+    assert "Eastern Time" in settings and "Pacific Time" in settings
+    # Settings lists what Sunday knows (it used to say "0 things" whatever was stored).
+    svc.repo.add_memory(pid, "Her sister Carol calls on Fridays.", topic="family", source="family")
+    settings = client.get(f"/app/{pid}/settings").text
+    assert "Carol calls on Fridays" in settings and "2 things" in settings
+    # Recording copy matches the switch: off means off, not "has agreed".
+    assert "Calls are not recorded" in settings
+    client.post(f"/app/{pid}/consent", data={"recording": "yes"})
+    assert "has agreed that calls may be recorded" in client.get(f"/app/{pid}/settings").text

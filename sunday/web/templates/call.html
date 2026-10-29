@@ -9,7 +9,7 @@
     <h1 style="font-size:2.2rem">{% if call.direction == 'inbound' %}{{ parent.address() }} called Sunday{% else %}Sunday called {{ parent.address() }}{% endif %}</h1>
     <div class="status">
       <span class="chip {{ call.mood or '' }}"><span class="mood {{ call.mood or 'unclear' }}"></span>{{ mood_label(call.mood) or 'spoke' }}</span>
-      <span>{{ local(call.started_at).strftime('%A %d %B, %H:%M') }}{% if call.ended_at and call.started_at %} · {{ ((call.ended_at - call.started_at).total_seconds() // 60)|int }} min{% endif %} · {{ call.turns|length }} turns</span>
+      <span>{{ local(call.started_at).strftime('%A, %B') }} {{ local(call.started_at).day }}, {{ local(call.started_at)|clock }}{% if call.ended_at and call.started_at %} · {{ ((call.ended_at - call.started_at).total_seconds() // 60)|int }} min{% endif %} · {{ call.turns|length }} turns</span>
     </div>
   </div>
 </div>
@@ -33,7 +33,7 @@
       <ul class="turns">
         {% for item in turns %}
         {% set t = item.turn %}
-        <li class="{{ t.speaker }}"><span class="who">{{ 'Sunday' if t.speaker == 'sunday' else parent.address() }}<small>{{ local(t.at).strftime('%H:%M:%S') }}</small></span><span class="text">{{ item.html }}</span></li>
+        <li class="{{ t.speaker }}"><span class="who">{{ 'Sunday' if t.speaker == 'sunday' else parent.address() }}<small>{{ local(t.at)|clock }}</small></span><span class="text">{{ item.html }}</span></li>
         {% endfor %}
       </ul>
     </div>

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - Sunday{% endblock %}
+{% block body %}
+<section class="oops">
+  <div class="code" aria-hidden="true">{{ code }}</div>
+  <h1 style="font-size:1.9rem">{{ title }}</h1>
+  <p class="muted">{{ text }}</p>
+  <p>
+    {% if viewer %}<a class="btn" href="/app">Back to your page</a>{% else %}<a class="btn" href="/">Back to the start</a> &nbsp; <a class="btn ghost" href="/login">Family sign in</a>{% endif %}
+  </p>
+  <p class="small faint">Error {{ code }}. If you reached this from a text we sent you, <a href="/contact">tell us</a> and we'll fix the link.</p>
+</section>
+{% endblock %}

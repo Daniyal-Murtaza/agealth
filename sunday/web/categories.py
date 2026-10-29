@@ -70,7 +70,7 @@ def _day_label(d: date, today: date) -> str:
         return "Yesterday"
     if today - d < timedelta(days=7):
         return d.strftime("%A")
-    return d.strftime("%a %d %b")
+    return f"{d:%a %b} {d.day}"
 
 
 def build_categories(repo: Repository, parent: Parent, *, days: int = 14) -> dict[str, Category]:
@@ -271,9 +271,10 @@ def build_categories(repo: Repository, parent: Parent, *, days: int = 14) -> dic
         when = (
             _day_label(nxt.when, today)
             if nxt.when - today < timedelta(days=7)
-            else nxt.when.strftime("%a %d %b")
+            else f"{nxt.when:%a %b} {nxt.when.day}"
         )
-        line = f"{nxt.text}. {when}."
+        # Day first, then the reminder, so the eye lands on "when" before "what".
+        line = f"{when}: {nxt.text}"
         tone = ""
     else:
         line, tone = "Nothing coming up.", "ok"

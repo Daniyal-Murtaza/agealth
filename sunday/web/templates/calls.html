@@ -10,11 +10,11 @@
 <div class="card tight">
   {% for d in days %}
   {% if d.call.status == 'no_answer' %}
-  <div class="day"><div style="display:flex;gap:.75rem"><span class="d">{{ d.label }}<small>{{ d.date.strftime('%d %b') }}</small></span><span class="s faint">No answer. {% if loop.index == 1 %}Sunday tried once more fifteen minutes later.{% endif %}</span></div></div>
+  <div class="day missed"><div><span class="d">{{ d.label }}<small>{{ d.sub }}</small></span><span class="s faint">No answer. {% if loop.index == 1 %}Sunday tried once more fifteen minutes later.{% endif %}</span></div></div>
   {% else %}
   <details class="day" {{ 'open' if loop.index == 1 }}>
     <summary>
-      <span class="d">{{ d.label }}<small>{{ d.date.strftime('%d %b, %H:%M') }}</small></span>
+      <span class="d">{{ d.label }}<small>{{ d.sub }}</small></span>
       <span class="s"><span class="mood {{ d.call.mood or 'unclear' }}" aria-label="{{ mood_label(d.call.mood) }}">{{ {'bright':'B','ok':'O','low':'L'}.get(d.call.mood, '') }}</span> {{ d.call.summary }}{% if d.call.direction == 'inbound' %} <span class="pill">called in</span>{% endif %}</span>
       <span class="caret" aria-hidden="true">›</span>
     </summary>
